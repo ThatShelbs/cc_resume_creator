@@ -18,8 +18,8 @@ This tool is just getting started. We will start creating the application now.
 	- `in_job` is the posting for the current role we want to design a new resume for. 
 
 
-- `resume_create/` — when we create a new output resume we save it as `out_resume_fname-lname_yyyy-mm-dd`
-- `resume_archive/` — when we create a new output resume we save the existing one here `out_resume_fname-lname_yyyy-mm-dd-hh-mm-ss`
+- `resume_create/` — when we create a new output resume we save it as `out_resume_fname-lname_yyyy-mm-dd`. We should make a copy as word .docx and a second copy as pdf in create folder.
+- `resume_archive/` — when we create a new output resume we save the existing one here `out_resume_fname-lname_yyyy-mm-dd-hh-mm-ss` we will only save the .docx versions.
 - `LICENSE` — MIT, copyright Shelby Temple.
 
 The naming of the three `resume_*` directories implies the intended workflow — read a profile from `resume_input/`, generate a tailored resume into `resume_create/`, and move superseded versions into `resume_archive/` — but no code implementing this exists yet.
