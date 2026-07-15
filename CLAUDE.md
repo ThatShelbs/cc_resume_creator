@@ -30,9 +30,9 @@ The intended workflow — read all files from `resume_input/`, generate a tailor
 
 ```
 pip install -r requirements.txt
-cp .env.example .env   # fill in ANTHROPIC_API_KEY
+claude /login   # one-time, if not already logged in
 python generate_resume.py
 ```
 
-The script picks the latest-named `in_profile*`, `in_resume*`, and `in_job*` files from `resume_input/`, calls the Anthropic API (model set via `CLAUDE_MODEL`, defaults to `claude-sonnet-5`) with a forced tool call so the response is structured resume data, then archives whatever is currently in `resume_create/` before writing the new `.docx`/`.pdf`. PDF generation uses `docx2pdf`, which drives MS Word via COM automation and therefore only works on Windows with Word installed — the `.docx` is still produced if that step fails.
+No API key is required — the script shells out to the Claude Code CLI (`claude -p`), which authenticates with your logged-in Claude subscription instead of billing per token. It picks the latest-named `in_profile*`, `in_resume*`, and `in_job*` files from `resume_input/`, runs the CLI with tool access disabled (`--tools ""`) so it's a pure text-generation call, and asks it to return a single JSON object matching a fixed resume shape (model set via `CLAUDE_MODEL`, defaults to the `sonnet` alias). It then archives whatever is currently in `resume_create/` before writing the new `.docx`/`.pdf`. PDF generation uses `docx2pdf`, which drives MS Word via COM automation and therefore only works on Windows with Word installed — the `.docx` is still produced if that step fails.
 

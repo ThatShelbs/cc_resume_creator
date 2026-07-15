@@ -2,10 +2,14 @@
 Generate a tailored resume from the files in resume_input/.
 
 Reads the applicant profile, a prior example resume, and a target job posting
-(all .docx), asks the Anthropic API to select and reword only *true* content
-from the profile/prior resume to fit the job posting, then writes the result
-to resume_create/ as .docx + .pdf. Any resume already in resume_create/ is
-moved to resume_archive/ (.docx only) before the new one is written.
+(all .docx), asks Claude (via the Claude Code CLI, using your logged-in
+subscription rather than a billed API key) to select and reword only *true*
+content from the profile/prior resume to fit the job posting, then writes the
+result to resume_create/ as .docx + .pdf. Any resume already in
+resume_create/ is moved to resume_archive/ (.docx only) before the new one is
+written.
+
+Requires the Claude Code CLI to be installed and logged in (`claude /login`).
 
 Usage:
     python generate_resume.py
@@ -15,12 +19,12 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
 
 import docx
-from anthropic import Anthropic
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
@@ -37,73 +41,23 @@ INPUT_DIR = ROOT / "resume_input"
 CREATE_DIR = ROOT / "resume_create"
 ARCHIVE_DIR = ROOT / "resume_archive"
 
-MODEL = os.environ.get("CLAUDE_MODEL", "claude-sonnet-5")
+MODEL = os.environ.get("CLAUDE_MODEL", "sonnet")
 
-RESUME_SCHEMA = {
-    "name": "emit_resume",
-    "description": "The finished, tailored resume content.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "first_name": {"type": "string"},
-            "last_name": {"type": "string"},
-            "email": {"type": "string"},
-            "phone": {"type": "string"},
-            "location": {"type": "string"},
-            "summary": {
-                "type": "string",
-                "description": "2-4 sentence professional summary tailored to the job posting.",
-            },
-            "education": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "institution": {"type": "string"},
-                        "location": {"type": "string"},
-                        "dates": {"type": "string"},
-                        "degree": {"type": "string"},
-                    },
-                    "required": ["institution", "dates", "degree"],
-                },
-            },
-            "experience": {
-                "type": "array",
-                "description": "Employment history, most recent first. Companies, titles, and dates must exactly match the source resume.",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "company": {"type": "string"},
-                        "location": {"type": "string"},
-                        "dates": {"type": "string"},
-                        "title": {"type": "string"},
-                        "bullets": {
-                            "type": "array",
-                            "items": {"type": "string"},
-                        },
-                    },
-                    "required": ["company", "dates", "title", "bullets"],
-                },
-            },
-            "skills": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Flat list of skills/tools relevant to the target role.",
-            },
-        },
-        "required": [
-            "first_name",
-            "last_name",
-            "email",
-            "phone",
-            "location",
-            "summary",
-            "education",
-            "experience",
-            "skills",
-        ],
-    },
-}
+RESUME_JSON_EXAMPLE = """{
+  "first_name": "Jane",
+  "last_name": "Doe",
+  "email": "jane@example.com",
+  "phone": "(555) 555-5555",
+  "location": "City, State",
+  "summary": "2-4 sentence professional summary.",
+  "education": [
+    {"institution": "University Name", "location": "City, State", "dates": "Spring 2020", "degree": "Degree Name"}
+  ],
+  "experience": [
+    {"company": "Company Name", "location": "City, State", "dates": "Mon Year - Mon Year", "title": "Job Title", "bullets": ["Bullet one.", "Bullet two."]}
+  ],
+  "skills": ["Skill One", "Skill Two"]
+}"""
 
 SYSTEM_PROMPT = """You are an expert resume strategist. Your job is to make a candidate's \
 truthful, existing career history land as strongly as possible for ONE specific job \
@@ -151,7 +105,44 @@ only include skills present in the source documents.
 candidate's single strongest true qualification against the posting's top priority, \
 and use the posting's own framing (its title, its named priorities) wherever that \
 framing is honestly supported by the source material.
-- Output only by calling the emit_resume tool. No other commentary."""
+
+Present the tailored resume as a clear, readable draft (plain text or markdown, your \
+choice — a later step handles final formatting, so focus entirely on strong, honest \
+tailoring rather than exact layout)."""
+
+FACT_CHECK_SYSTEM_PROMPT = """You are a meticulous fact-checker and copyeditor for \
+resumes. You will be given GROUND TRUTH source documents and a DRAFT RESUME built from \
+them. Silently rewrite the draft so every claim in it is fully supported by the ground \
+truth, then output the corrected resume as plain, readable text.
+
+What to fix, silently, without narrating what you changed:
+- Employer, title, and dates for each role must match the PRIOR RESUME ground-truth \
+document exactly.
+- If a bullet listed under one employer mentions a different employer by name, or \
+states an outcome that belongs to a different employer (even as a parenthetical aside \
+like "similar to X previously done at Company Y"), remove that reference from the \
+bullet. Keep the rest of the bullet if it still reads fine on its own; drop the bullet \
+entirely if removing the reference leaves nothing meaningful.
+- If a bullet or the summary states a scope, audience, term of art, or number that does \
+not appear anywhere in the ground truth for that specific accomplishment, remove or \
+correct that specific detail so it matches only what the ground truth actually supports.
+- Remove any skill that doesn't appear in the ground truth documents.
+- Do not soften, hedge, or remove claims that are already accurate — only fix what is \
+actually unsupported.
+
+Output only the corrected resume itself — no audit report, no list of issues found, no \
+notes about what you changed, no preamble, no commentary. Just the clean, corrected \
+resume text, in the same format it was given to you in."""
+
+FORMAT_SYSTEM_PROMPT = """You are a text-to-JSON transcription tool with no other \
+function — you do not evaluate, fact-check, edit, or comment on the content, you only \
+reformat it. Transcribe the resume text you are given into exactly this JSON shape, \
+using exactly these field names copied literally, wrapped in <RESUME_JSON> and \
+</RESUME_JSON> tags, with absolutely nothing else anywhere in your reply — no markdown, \
+no commentary, no notes:
+<RESUME_JSON>
+""" + RESUME_JSON_EXAMPLE + """
+</RESUME_JSON>"""
 
 
 def read_docx_text(path: Path) -> str:
@@ -176,40 +167,219 @@ def find_latest(prefix: str) -> Path:
     return matches[-1]
 
 
-def call_llm(profile_text: str, resume_text: str, job_text: str) -> dict:
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
-    if not api_key:
-        sys.exit(
-            "ANTHROPIC_API_KEY is not set. Add it to a .env file in the repo root "
-            "(see .env.example) or export it in your shell."
-        )
-    client = Anthropic(api_key=api_key)
+def _strip_code_fence(text: str) -> str:
+    text = text.strip()
+    if text.startswith("```"):
+        lines = text.splitlines()[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    return text
 
-    user_message = f"""PROFILE (source of truth for accomplishments, skills, and details):
+
+def _find_claude_cli() -> str:
+    claude_bin = shutil.which("claude")
+    if not claude_bin:
+        sys.exit(
+            "Could not find the `claude` CLI on PATH. Install the Claude Code CLI "
+            "and run `claude /login` to authenticate with your subscription."
+        )
+    return claude_bin
+
+
+def _invoke_claude(claude_bin: str, system_prompt: str, user_message: str) -> str:
+    proc = subprocess.run(
+        [
+            claude_bin,
+            "-p",
+            "--output-format",
+            "json",
+            "--tools",
+            "",
+            "--model",
+            MODEL,
+            "--system-prompt",
+            system_prompt,
+        ],
+        input=user_message,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    if proc.returncode != 0:
+        sys.exit(f"claude CLI exited with an error:\n{proc.stderr.strip()}")
+
+    try:
+        envelope = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        sys.exit(f"Could not parse claude CLI output as JSON ({exc}):\n{proc.stdout}")
+
+    if envelope.get("is_error"):
+        sys.exit(f"claude CLI reported an error: {envelope.get('result')}")
+
+    return envelope.get("result", "")
+
+
+def _try_parse_resume_json(raw_result: str) -> dict | None:
+    match = re.search(r"<RESUME_JSON>(.*?)</RESUME_JSON>", raw_result, re.DOTALL)
+    result_text = _strip_code_fence(match.group(1) if match else raw_result)
+    try:
+        parsed = json.loads(result_text)
+    except json.JSONDecodeError:
+        return None
+    return parsed if isinstance(parsed, dict) else None
+
+
+def _first_present(d: dict, keys: list, default: str = "") -> str:
+    for key in keys:
+        value = d.get(key)
+        if value:
+            return value
+    return default
+
+
+def _normalize_name(data: dict) -> tuple:
+    first = _first_present(data, ["first_name", "firstName"])
+    last = _first_present(data, ["last_name", "lastName"])
+    if first or last:
+        return first, last
+    contact = data.get("contact") if isinstance(data.get("contact"), dict) else {}
+    full = _first_present(data, ["name", "full_name", "fullName"]) or _first_present(
+        contact, ["name", "full_name"]
+    )
+    parts = full.split()
+    if not parts:
+        return "", ""
+    return parts[0], " ".join(parts[1:]) or parts[0]
+
+
+def _normalize_contact(data: dict) -> tuple:
+    contact = data.get("contact") if isinstance(data.get("contact"), dict) else {}
+    email = _first_present(data, ["email"]) or _first_present(contact, ["email"])
+    phone = _first_present(data, ["phone"]) or _first_present(contact, ["phone"])
+    location = _first_present(data, ["location"]) or _first_present(contact, ["location"])
+    return email, phone, location
+
+
+def _normalize_dates(entry: dict) -> str:
+    dates = _first_present(entry, ["dates", "date", "year", "period"])
+    if dates:
+        return dates
+    start = _first_present(entry, ["startDate", "start_date", "start"])
+    end = _first_present(entry, ["endDate", "end_date", "end"])
+    if start or end:
+        return f"{start} - {end}".strip(" -")
+    return ""
+
+
+def _normalize_resume(data: dict) -> dict:
+    first, last = _normalize_name(data)
+    email, phone, location = _normalize_contact(data)
+
+    education = []
+    for edu in data.get("education") or []:
+        education.append(
+            {
+                "institution": _first_present(edu, ["institution", "school", "university"]),
+                "location": _first_present(edu, ["location"]),
+                "dates": _normalize_dates(edu),
+                "degree": _first_present(edu, ["degree"]),
+            }
+        )
+
+    experience = []
+    for job in data.get("experience") or []:
+        bullets = job.get("bullets") or job.get("highlights") or job.get("responsibilities") or []
+        experience.append(
+            {
+                "company": _first_present(job, ["company", "employer"]),
+                "location": _first_present(job, ["location"]),
+                "dates": _normalize_dates(job),
+                "title": _first_present(job, ["title", "role", "position"]),
+                "bullets": list(bullets),
+            }
+        )
+
+    normalized = {
+        "first_name": first,
+        "last_name": last,
+        "email": email,
+        "phone": phone,
+        "location": location,
+        "summary": _first_present(data, ["summary"]),
+        "education": education,
+        "experience": experience,
+        "skills": list(data.get("skills") or []),
+    }
+
+    if not normalized["first_name"] and not normalized["last_name"]:
+        sys.exit(f"Could not determine applicant name from model output:\n{json.dumps(data, indent=2)[:1000]}")
+    if not normalized["experience"]:
+        sys.exit(f"Could not determine work experience from model output:\n{json.dumps(data, indent=2)[:1000]}")
+
+    return normalized
+
+
+def _strip_cross_employer_mentions(data: dict) -> None:
+    companies = [job["company"] for job in data["experience"] if job.get("company")]
+    for job in data["experience"]:
+        others = [c for c in companies if c and c != job.get("company")]
+        kept = []
+        for bullet in job.get("bullets", []):
+            hit = next((c for c in others if c.lower() in bullet.lower()), None)
+            if hit:
+                print(
+                    f"  Warning: dropped a bullet under {job.get('company')} that "
+                    f"mentioned {hit} (cross-employer content is not allowed): "
+                    f"{bullet[:80]}..."
+                )
+                continue
+            kept.append(bullet)
+        job["bullets"] = kept
+
+
+def call_llm(profile_text: str, resume_text: str, job_text: str) -> dict:
+    claude_bin = _find_claude_cli()
+
+    draft_message = f"""PROFILE (source of truth for accomplishments, skills, and details):
 {profile_text}
 
 PRIOR RESUME (source of truth for employers, titles, and dates):
 {resume_text}
 
 JOB POSTING (tailor emphasis, ordering, and phrasing to this):
-{job_text}
+{job_text}"""
 
-Produce the tailored resume by calling emit_resume."""
+    print("  Drafting tailored content...")
+    draft = _invoke_claude(claude_bin, SYSTEM_PROMPT, draft_message)
 
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=6000,
-        system=SYSTEM_PROMPT,
-        tools=[RESUME_SCHEMA],
-        tool_choice={"type": "tool", "name": "emit_resume"},
-        messages=[{"role": "user", "content": user_message}],
-    )
+    factcheck_message = f"""GROUND TRUTH - PROFILE:
+{profile_text}
 
-    for block in response.content:
-        if block.type == "tool_use" and block.name == "emit_resume":
-            return block.input
+GROUND TRUTH - PRIOR RESUME:
+{resume_text}
 
-    sys.exit("Anthropic API response did not include the expected tool call.")
+DRAFT RESUME (silently correct this against the ground truth above):
+{draft}"""
+
+    print("  Fact-checking against source documents...")
+    corrected = _invoke_claude(claude_bin, FACT_CHECK_SYSTEM_PROMPT, factcheck_message)
+
+    print("  Converting to structured data...")
+    data = None
+    raw = ""
+    for attempt in range(3):
+        raw = _invoke_claude(claude_bin, FORMAT_SYSTEM_PROMPT, corrected)
+        data = _try_parse_resume_json(raw)
+        if data is not None:
+            break
+        print(f"  Attempt {attempt + 1} did not return valid JSON, retrying...")
+    if data is None:
+        sys.exit(f"Could not get valid structured resume data after 3 attempts. Last raw response:\n{raw}")
+
+    data = _normalize_resume(data)
+    _strip_cross_employer_mentions(data)
+    return data
 
 
 def slugify_name(first: str, last: str) -> str:
