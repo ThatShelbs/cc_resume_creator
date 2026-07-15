@@ -1,4 +1,3 @@
-anthropic
 python-docx
 docx2pdf
 pywin32; sys_platform == "win32"
