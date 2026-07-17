@@ -25,6 +25,7 @@ The intended workflow — read all files from `resume_input/`, generate a tailor
 - `resume_archive/` — when we create a new output resume we save the existing one here `out_resume_fname-lname_yyyy-mm-dd-hh-mm-ss` we will only save the .docx versions.
 - `LICENSE` — MIT, copyright Shelby Temple.
 - `generate_resume.py` — the script that implements the workflow above.
+- `resume_best_practices.md` — evidence-based resume/ATS guidance researched once and cached, so the generator doesn't re-research it (or spend tokens/time on it) on every run. Only claims traceable to a named study or a company's own reported data are included.
 
 ## Running the generator
 
@@ -34,5 +35,11 @@ claude /login   # one-time, if not already logged in
 python generate_resume.py
 ```
 
-No API key is required — the script shells out to the Claude Code CLI (`claude -p`), which authenticates with your logged-in Claude subscription instead of billing per token. It picks the latest-named `in_profile*`, `in_resume*`, and `in_job*` files from `resume_input/`, runs the CLI with tool access disabled (`--tools ""`) so it's a pure text-generation call, and asks it to return a single JSON object matching a fixed resume shape (model set via `CLAUDE_MODEL`, defaults to the `sonnet` alias). It then archives whatever is currently in `resume_create/` before writing the new `.docx`/`.pdf`. PDF generation uses `docx2pdf`, which drives MS Word via COM automation and therefore only works on Windows with Word installed — the `.docx` is still produced if that step fails.
+No API key is required — the script shells out to the Claude Code CLI (`claude -p`), which authenticates with your logged-in Claude subscription instead of billing per token.
+
+Contact info, education, and each employer's company/location/dates/title are parsed deterministically out of `resume_input/in_profile*` and `in_resume*` with plain Python (no LLM involved) — there's no tailoring judgment in those fields, so doing it in code is faster, cheaper, and can't introduce a transcription error. The CLI is only asked to produce the parts that actually require judgment: a tailored summary, per-employer bullets selected from true source material, and a tailored skills list, drawing on `resume_best_practices.md`'s condensed checklist. That two-call sequence (free-form draft, then a narrow reformatting call) runs with `--tools ""` (pure text generation, no file/tool access), a scrubbed subprocess environment, and `cwd` set outside this repo — without those, the CLI call picks up this repo's own `CLAUDE.md` and starts behaving like an interactive coding assistant instead of a one-shot text transform. A lightweight local parser also tries to read the draft's structure directly and skip the second call entirely when the format is regular enough.
+
+After generation, several deterministic Python checks run against the source documents before anything is written: bullets that mention a different employer are dropped, an inflated total-years-of-experience claim is corrected to match the prior resume, and bullets with unsupported numbers, unverified skills, or job-posting-buzzword "analogous to X" phrasing are flagged as console warnings for manual review (not silently modified — the model's judgment calls that don't cleanly map to a deterministic check still need a human read before sending).
+
+It then archives whatever is currently in `resume_create/` before writing the new `.docx`/`.pdf`. PDF generation uses `docx2pdf`, which drives MS Word via COM automation and therefore only works on Windows with Word installed — the `.docx` is still produced if that step fails.
 
