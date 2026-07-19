@@ -73,6 +73,13 @@ here.
   employer/title/dates, and education are what get the most attention in the initial
   scan — don't bury the strongest, most relevant qualification below weaker material.
   (TheLadders eye-tracking study)
+- Skills section length: no traceable study was found pinning an exact "optimal"
+  count. Search results here were dominated by the same unsourced content-mill
+  statistics called out above (e.g. a specific "10-15 skills" or "60% hard / 40% soft"
+  split attributed to no actual study). The generator targets ~20 skills, drawn from a
+  mix of tools, soft/leadership skills, methodologies, and discipline subfields,
+  selected for relevance to the specific posting — a reasonable default in the absence
+  of real evidence for a different number, not a research-backed figure.
 
 ### ATS-safe formatting (technical parsing mechanics, not a "study" per se — this is
 how ATS text-extraction actually works)

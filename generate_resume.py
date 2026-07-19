@@ -270,6 +270,20 @@ describes what the candidate truly did.
 candidate's single strongest true qualification against the posting's top priority, \
 and use the posting's own framing (its title, its named priorities) wherever that \
 framing is honestly supported by the source material.
+- Build the skills list from a genuine mix of categories, pulling only what's actually \
+in PROFILE or PRIOR RESUME: tools/software (e.g. Python, Tableau), soft skills and \
+leadership abilities (e.g. stakeholder management, team leadership), project \
+frameworks/methodologies the candidate has genuinely applied (e.g. customer \
+segmentation, marketing mix modeling), and fields/subfields of the candidate's \
+discipline (e.g. causal inference, experimentation). Don't limit it to just tools.
+- From everything the candidate genuinely has, select the ~20 skills most relevant to \
+this specific job posting — favor close or exact matches to what the posting names. \
+Don't include an "obvious" true skill just because it's obvious; select for relevance \
+to this posting specifically. Ordering doesn't matter, a later step sorts the list.
+
+Writing style:
+- Do not use em dashes (—) anywhere. Use a period, comma, semicolon, or parentheses \
+instead. Heavy em-dash use reads as an obvious AI-writing tell.
 
 Also apply these evidence-based resume practices where relevant (see resume_best_practices.md \
 for sources):
@@ -416,102 +430,77 @@ def _try_parse_format_json(raw: str, companies: list) -> dict | None:
     return {"summary": summary, "bullets_by_company": bullets_by_company, "skills": skills}
 
 
-def _strip_markdown_decoration(line: str) -> str:
-    return re.sub(r"^[#*_\s]+|[#*_\s]+$", "", line).strip()
-
-
-def _is_bullet_line(line: str) -> bool:
-    return bool(re.match(r"^\s*[-•*]\s+", line))
-
-
-def _bullet_text(line: str) -> str:
-    return re.sub(r"^\s*[-•*]\s+", "", line).strip()
-
-
-SKILLS_HEADING_RE = re.compile(
-    r"^(skills|core competencies|skills\s*&?\s*tools|technical skills)\s*:?\s*$", re.IGNORECASE
+SKILLS_SECTION_HEADING_RE = re.compile(
+    r"^(core competencies|skills|skills\s*&?\s*tools|technical\s+(skills|toolkit))\s*:?\s*$",
+    re.IGNORECASE,
 )
 
 
-def _find_company_headers(lines: list, companies: list) -> dict | None:
-    """Find each company's header line, in order, searching only after the
-    previous company's position — this avoids false matches from a company
-    name mentioned in passing in the summary or another bullet."""
-    idx = {}
-    search_from = 0
-    for company in companies:
-        found = None
-        for i in range(search_from, len(lines)):
-            line = lines[i]
-            if _is_bullet_line(line):
-                continue
-            stripped = _strip_markdown_decoration(line)
-            if not stripped or len(stripped) > len(company) + 60:
-                continue
-            if re.search(rf"(?<!\w){re.escape(company)}(?!\w)", stripped, re.IGNORECASE):
-                found = i
-                break
-        if found is None:
-            return None
-        idx[company] = found
-        search_from = found + 1
-    return idx
+def _clean_heading_line(line: str) -> str:
+    return re.sub(r"^#{1,6}\s*|\*+", "", line).strip().rstrip(":")
 
 
-def try_parse_draft_heuristically(draft: str, companies: list) -> dict | None:
-    """Best-effort, dependency-free parse of the free-form draft, skipping the
-    second LLM call entirely when it succeeds. Returns None on any ambiguity
-    so the caller can fall back to the LLM-based formatter — this only ever
-    saves time, never trades away reliability."""
+def _split_skill_items(text: str) -> list:
+    """Split on "|" (the model's category-item separator), then on "," —
+    but never split a comma that's inside parentheses, since skill names
+    sometimes list examples in parens (e.g. "Uplift Modeling (CausalML,
+    PyLift)"), which a naive comma-split would break apart."""
+    items = []
+    for chunk in text.split("|"):
+        depth = 0
+        current = ""
+        for ch in chunk:
+            if ch == "(":
+                depth += 1
+            elif ch == ")":
+                depth = max(0, depth - 1)
+            if ch == "," and depth == 0:
+                items.append(current)
+                current = ""
+            else:
+                current += ch
+        items.append(current)
+    return [i.strip() for i in items if i.strip()]
+
+
+CATEGORY_LINE_RE = re.compile(r"^-?\s*\*\*([^*]+):\*\*\s*(.+)$")
+
+
+def extract_skills_from_draft(draft: str) -> list:
+    """Deterministically pull every skill/tool out of the draft's
+    competencies section — the JSON-transcription step doesn't reliably
+    flatten this. Primarily detects the categorized layout ("**Category:**
+    item | item", optionally bulleted) structurally, wherever it appears,
+    since the model uses a different heading each run ("CORE COMPETENCIES",
+    "CORE STRENGTHS", ...) rather than matching on heading text. Falls back
+    to a heading-based search for a flat, uncategorized list."""
     lines = draft.splitlines()
 
-    header_idx = _find_company_headers(lines, companies)
-    if header_idx is None:
-        return None
+    items = []
+    for line in lines:
+        match = CATEGORY_LINE_RE.match(line.strip())
+        if match:
+            items.extend(_split_skill_items(match.group(2)))
+    if items:
+        return items
 
-    ordered = sorted(header_idx.items(), key=lambda kv: kv[1])
-    bounds = [idx for _, idx in ordered] + [len(lines)]
-
-    bullets_by_company = {}
-    for (company, start), end in zip(ordered, bounds[1:]):
-        bullets = [_bullet_text(l) for l in lines[start + 1 : end] if _is_bullet_line(l)]
-        if not bullets:
-            return None
-        bullets_by_company[company] = bullets
-
-    first_company_idx = ordered[0][1]
-    summary_lines = []
-    for line in lines[:first_company_idx]:
-        stripped = _strip_markdown_decoration(line)
-        if not stripped or re.match(r"^summary$", stripped, re.IGNORECASE):
-            continue
-        if "@" in stripped or PHONE_RE.search(stripped):
-            continue
-        summary_lines.append(stripped)
-    summary = " ".join(summary_lines).strip()
-    if not summary:
-        return None
-
-    skills = []
+    start = None
     for i, line in enumerate(lines):
-        if not SKILLS_HEADING_RE.match(_strip_markdown_decoration(line)):
-            continue
-        chunks = []
-        for l in lines[i + 1 :]:
-            stripped = _strip_markdown_decoration(l)
-            if not stripped:
-                if chunks:
-                    break
-                continue
-            if re.match(r"^(education|experience)\s*:?$", stripped, re.IGNORECASE):
-                break
-            chunks.append(_bullet_text(l) if _is_bullet_line(l) else stripped)
-        skills = [s.strip() for chunk in chunks for s in re.split(r",|\|", chunk) if s.strip()]
-        break
-    if not skills:
-        return None
+        if SKILLS_SECTION_HEADING_RE.match(_clean_heading_line(line)):
+            start = i + 1
+            break
+    if start is None:
+        return []
 
-    return {"summary": summary, "bullets_by_company": bullets_by_company, "skills": skills}
+    for line in lines[start:]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if re.match(r"^#{1,6}\s+\S", stripped) or re.match(r"^-{3,}$", stripped):
+            break  # next section heading or a horizontal-rule divider
+        content = re.sub(r"^[-*]\s+", "", stripped)  # drop a bullet marker, if any
+        items.extend(_split_skill_items(content))
+    return items
 
 
 def tailor_content(profile_text: str, resume_text: str, job_text: str, jobs: list) -> dict:
@@ -532,11 +521,6 @@ JOB POSTING (tailor emphasis, ordering, and phrasing to this):
     print("  Drafting tailored content...")
     draft = _invoke_claude(claude_bin, draft_system_prompt, user_message)
 
-    parsed = try_parse_draft_heuristically(draft, companies)
-    if parsed:
-        print("  Parsed draft directly (skipped the formatting call).")
-        return parsed
-
     print("  Converting to structured data...")
     parsed = None
     raw = ""
@@ -549,6 +533,16 @@ JOB POSTING (tailor emphasis, ordering, and phrasing to this):
         print(f"  Attempt {attempt + 1} did not return usable structured data, retrying...")
     else:
         sys.exit(f"Could not get usable structured data after 3 attempts. Last raw response:\n{raw}")
+
+    # The JSON-transcription step doesn't reliably flatten a categorized
+    # skills section (e.g. "**Leadership:** Team Building | Change
+    # Management") into the flat list we need — sometimes it drops whole
+    # categories, sometimes it returns nothing at all. Parsing the draft's
+    # skills section directly is far more reliable, so prefer it whenever it
+    # finds anything.
+    draft_skills = extract_skills_from_draft(draft)
+    if draft_skills:
+        parsed["skills"] = draft_skills
 
     return parsed
 
@@ -656,6 +650,69 @@ def warn_analogy_phrasing(bullets_by_company: dict) -> None:
                     f"  Warning: a bullet under {company} uses comparison phrasing that "
                     f"may overclaim relevance to unfamiliar terms — please review: {bullet[:100]}..."
                 )
+
+
+def remove_em_dashes(text: str) -> str:
+    """Backstop for the "no em dashes" style rule — prompt compliance isn't
+    guaranteed, so replace any that slip through with a comma (safe for the
+    fragment-style clauses resume bullets/summaries use)."""
+    text = re.sub(r"\s*—\s*", ", ", text)
+    return re.sub(r",\s*,", ",", text)
+
+
+def _skill_key(skill: str) -> str:
+    return re.sub(r"\s*\([^)]*\)", "", skill).strip().lower()
+
+
+def parse_profile_skills(profile_path: Path) -> dict:
+    """Deterministically pull the flat skill/tool lists out of the profile's
+    'Software/Tools' and 'Skills' sections (List Paragraph entries under those
+    headers) — used as a truthful pool to backfill anything the model omits.
+    Kept separate: tool names are unambiguous and safe to always list in full;
+    the broader skills phrases benefit more from job-specific filtering."""
+    doc = docx.Document(str(profile_path))
+    paras = [(p.style.name, p.text.strip()) for p in doc.paragraphs if p.text.strip()]
+
+    tool_section_names = {"software/tools", "software / tools", "tools"}
+    skill_section_names = {"skills"}
+    tools, skills = [], []
+    current = None
+    for style, text in paras:
+        key = text.rstrip(":").strip().lower()
+        if style == "Normal":
+            if key in tool_section_names:
+                current = tools
+            elif key in skill_section_names:
+                current = skills
+            else:
+                current = None
+            continue
+        if current is not None and style == "List Paragraph":
+            current.append(text)
+    return {"tools": tools, "skills": skills}
+
+
+def merge_and_sort_skills(tailored_skills: list, profile_skills: dict, job_text: str) -> list:
+    """The model curates the actual skills list (mix of tools, soft skills,
+    frameworks, and DS subfields, picked for relevance to this posting). This
+    is just a narrow safety net: force-include a profile tool/skill only when
+    the job posting itself explicitly names it too (e.g. "Python" shouldn't
+    be missing when both the profile and the posting mention it) — it doesn't
+    dump the whole profile in, which would fight the model's curation. Merge,
+    dedup, and sort alphabetically."""
+    job_lower = job_text.lower()
+    must_include = [
+        s
+        for s in profile_skills["tools"] + profile_skills["skills"]
+        if _skill_key(s) and _skill_key(s) in job_lower
+    ]
+
+    seen = {}
+    for skill in tailored_skills + must_include:
+        key = _skill_key(skill)
+        if key and key not in seen:
+            seen[key] = skill
+    return sorted(seen.values(), key=str.lower)
 
 
 # ---------------------------------------------------------------------------
@@ -854,15 +911,20 @@ def main() -> None:
     tailored = tailor_content(profile_text, resume_text, job_text, parsed_resume["jobs"])
 
     summary = fix_years_of_experience(tailored["summary"], resume_text)
+    summary = remove_em_dashes(summary)
     bullets_by_company = strip_cross_employer_mentions(tailored["bullets_by_company"])
+    bullets_by_company = {c: [remove_em_dashes(b) for b in bs] for c, bs in bullets_by_company.items()}
     warn_analogy_phrasing(bullets_by_company)
+
+    profile_skills = parse_profile_skills(profile_path)
+    skills = merge_and_sort_skills(tailored["skills"], profile_skills, job_text)
 
     source_text = profile_text + "\n" + resume_text
     warn_unsupported_numbers(summary, "the summary", source_text)
     for company, bullets in bullets_by_company.items():
         for bullet in bullets:
             warn_unsupported_numbers(bullet, f"a bullet under {company}", source_text)
-    warn_unverified_skills(tailored["skills"], source_text)
+    warn_unverified_skills(skills, source_text)
 
     experience = [
         {
@@ -880,7 +942,7 @@ def main() -> None:
         "summary": summary,
         "education": parsed_resume["education"],
         "experience": experience,
-        "skills": tailored["skills"],
+        "skills": skills,
     }
 
     archive_existing_outputs()
