@@ -47,15 +47,11 @@ ARCHIVE_DIR = ROOT / "resume_archive"
 MODEL = os.environ.get("CLAUDE_MODEL", "sonnet")
 EFFORT = os.environ.get("CLAUDE_EFFORT", "medium")
 
-# Distilled from resume_best_practices.md (see that file for sources/citations).
-# Kept as a short, prompt-ready checklist so the model doesn't have to
-# re-derive best practices, and so the per-run prompt stays compact.
-BEST_PRACTICES = """1. Quantify impact wherever the source material has a real number — dollars, %, counts, time.
-2. Start bullets with strong active verbs; never passive "was responsible for" phrasing.
-3. Mirror the job posting's exact terminology for skills/title language the candidate honestly has.
-4. Lead with the single most relevant, highest-impact bullet per role — recruiters scan, they don't read linearly at first.
-5. Don't compress a 10+ year career to fit one page at the cost of cutting strong material; don't pad a short career to fill two.
-6. Cut unquantified, generic duty-description bullets in favor of fewer, sharper, evidence-backed ones."""
+# The tailoring rules/methodology live in an agent-native Claude Code skill
+# (.claude/skills/resume-tailoring/SKILL.md) rather than in a Python string, so
+# there's one source of truth shared by this pipeline and any interactive
+# `/resume-tailoring` use. load_tailoring_rules() reads that file's body.
+TAILORING_SKILL_PATH = ROOT / ".claude" / "skills" / "resume-tailoring" / "SKILL.md"
 
 
 def read_docx_text(path: Path) -> str:
@@ -222,79 +218,35 @@ def parse_prior_resume(resume_path: Path) -> dict:
 # the tailored summary, per-employer bullets, and a tailored skills list.
 # ---------------------------------------------------------------------------
 
-TAILOR_SYSTEM_PROMPT = """You are an expert resume strategist. Your job is to make a candidate's \
-truthful, existing career history land as strongly as possible for ONE specific job \
-posting, so a recruiter reading it decides to call the candidate for a screening or \
-interview. Tailoring to the posting is the main thing you are being judged on — a \
-resume that just restates the source documents in the original order is a failure, \
-even if every fact in it is true.
+# Pipeline-specific I/O contract appended to the skill's methodology at call
+# time. Kept here (not in the skill) because it's coupled to how this script
+# parses the draft — company/dates/titles are filled in deterministically, and
+# the "{company_block}" placeholder is substituted with the parsed employers.
+PIPELINE_OUTPUT_CONTRACT = """
 
-Ground truth, non-negotiable:
-- Every accomplishment, metric, and skill you use must already exist in the PROFILE \
-and/or PRIOR RESUME documents. Never invent, exaggerate, or imply experience, tools, \
-metrics, or scope the candidate doesn't have. If the posting wants something the \
-candidate has never done, do not claim it and do not imply it through word choice \
-(e.g. don't call real attribution-modeling work "incrementality testing" unless the \
-source material actually describes incrementality testing).
-- Do not stretch the truth or put the applicant "over their skis" — tailoring means \
-selection, reordering, and honest reframing of real experience, never fabrication.
-- Never state a total years-of-experience figure higher than what the PRIOR RESUME says.
-- Never transplant a detail, scope claim, or outcome from one employer's true material \
-onto a different employer's bullets, even if it sounds plausible for both. Never add a \
-scope, audience, or downstream-impact claim (e.g. who a result "informed" or was \
-"used by") beyond what the source material states for that specific accomplishment.
-- Every bullet listed under an employer must describe work done at that employer only. \
-Never mention a different employer, or that employer's outcome, inside another \
-employer's bullets — not even as a "previously did X at Y" aside.
-- Never name a specific tool, platform, methodology, or term of art from the job \
-posting that the candidate hasn't actually used or done, even as a comparison or \
-analogy ("similar to X," "analogous to driving Y adoption," "directly applicable to \
-Z," "the same approach used for W"). Naming an unfamiliar posting-specific term next \
-to real work implies familiarity with it — that is exactly the kind of "over their \
-skis" claim this rule forbids, even when it's technically phrased as a comparison \
-rather than a direct claim.
+---
 
-Tailoring — weight this heavily:
-- Before writing anything, identify the 5-8 things this specific posting most cares \
-about (its "You Will" / "You Have" priorities, its named responsibilities, its own \
-vocabulary).
-- For each employer, pull from every TRUE bullet available across PROFILE and PRIOR \
-RESUME for that employer (the profile often has more detail/metrics than the old \
-resume's bullets) and select the ones that most directly serve this posting's \
-priorities. Prefer fewer, sharper, highly relevant bullets over reproducing the \
-source's full list — 3-5 strong bullets per role, cutting or shrinking whatever \
-doesn't support this posting, leading each role with its most relevant bullet.
-- Reword bullets in the posting's own vocabulary wherever that vocabulary accurately \
-describes what the candidate truly did.
-- Write the summary as a direct, confident pitch for this exact role: open with the \
-candidate's single strongest true qualification against the posting's top priority, \
-and use the posting's own framing (its title, its named priorities) wherever that \
-framing is honestly supported by the source material.
-- Build the skills list from a genuine mix of categories, pulling only what's actually \
-in PROFILE or PRIOR RESUME: tools/software (e.g. Python, Tableau), soft skills and \
-leadership abilities (e.g. stakeholder management, team leadership), project \
-frameworks/methodologies the candidate has genuinely applied (e.g. customer \
-segmentation, marketing mix modeling), and fields/subfields of the candidate's \
-discipline (e.g. causal inference, experimentation). Don't limit it to just tools.
-- From everything the candidate genuinely has, select the ~20 skills most relevant to \
-this specific job posting — favor close or exact matches to what the posting names. \
-Don't include an "obvious" true skill just because it's obvious; select for relevance \
-to this posting specifically. Ordering doesn't matter, a later step sorts the list.
-
-Writing style:
-- Do not use em dashes (—) anywhere. Use a period, comma, semicolon, or parentheses \
-instead. Heavy em-dash use reads as an obvious AI-writing tell.
-
-Also apply these evidence-based resume practices where relevant (see resume_best_practices.md \
-for sources):
-""" + BEST_PRACTICES + """
-
-Company/location/date/title fields are already fixed and handled separately — do not \
-repeat them; focus entirely on the summary, the bullets for each employer listed below \
-(cover every one of them), and the skills list. Present your result as clear, readable \
-text (plain text or markdown, your choice — a later step handles final structuring, so \
-focus entirely on strong, honest, well-tailored content). Employers to cover, in order:
+Pipeline I/O for this run: Company, location, date, and title fields are already fixed \
+and handled separately, so do not repeat or alter them. Focus entirely on the summary, \
+the bullets for each employer listed below (cover every one of them), and the skills \
+list. Present your result as clear, readable text (plain text or markdown, your choice; \
+a later step handles final structuring). Employers to cover, in order:
 {company_block}"""
+
+
+def load_tailoring_rules() -> str:
+    """Load the tailoring methodology from the resume-tailoring skill, stripping
+    the YAML frontmatter so only the instructional body is used as the system
+    prompt. The skill is the single source of truth for these rules."""
+    if not TAILORING_SKILL_PATH.exists():
+        sys.exit(
+            f"Tailoring skill not found at {TAILORING_SKILL_PATH}. This file holds the "
+            "resume-tailoring rules that drive generation; restore it before running."
+        )
+    text = TAILORING_SKILL_PATH.read_text(encoding="utf-8")
+    # Drop a leading "---\n ... \n---\n" YAML frontmatter block if present.
+    text = re.sub(r"^﻿?---\n.*?\n---\n", "", text, count=1, flags=re.DOTALL)
+    return text.strip()
 
 FORMAT_JSON_EXAMPLE = """{
   "summary": "2-4 sentence tailored summary.",
@@ -339,28 +291,42 @@ def _clean_subprocess_env() -> dict:
 
 
 def _invoke_claude(claude_bin: str, system_prompt: str, user_message: str) -> str:
-    proc = subprocess.run(
-        [
-            claude_bin,
-            "-p",
-            "--output-format",
-            "json",
-            "--tools",
-            "",
-            "--model",
-            MODEL,
-            "--effort",
-            EFFORT,
-            "--system-prompt",
-            system_prompt,
-        ],
-        input=user_message,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env=_clean_subprocess_env(),
-        cwd=tempfile.gettempdir(),  # avoid CLAUDE.md auto-discovery from this repo's cwd
-    )
+    # Pass the system prompt via a file, not a CLI arg: the `claude` entry on
+    # Windows is a .CMD shim run through cmd.exe, which caps the whole command
+    # line at 8191 chars, so a long system prompt overflows it ("The command
+    # line is too long."). --system-prompt-file has no such limit.
+    with tempfile.NamedTemporaryFile(
+        mode="w", suffix=".txt", encoding="utf-8", delete=False
+    ) as sp_file:
+        sp_file.write(system_prompt)
+        sp_path = sp_file.name
+
+    try:
+        proc = subprocess.run(
+            [
+                claude_bin,
+                "-p",
+                "--output-format",
+                "json",
+                "--tools",
+                "",
+                "--model",
+                MODEL,
+                "--effort",
+                EFFORT,
+                "--system-prompt-file",
+                sp_path,
+            ],
+            input=user_message,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=_clean_subprocess_env(),
+            cwd=tempfile.gettempdir(),  # avoid CLAUDE.md auto-discovery from this repo's cwd
+        )
+    finally:
+        os.unlink(sp_path)
+
     if proc.returncode != 0:
         sys.exit(f"claude CLI exited with an error:\n{proc.stderr.strip()}")
 
@@ -441,10 +407,14 @@ def _clean_heading_line(line: str) -> str:
 
 
 def _split_skill_items(text: str) -> list:
-    """Split on "|" (the model's category-item separator), then on "," —
-    but never split a comma that's inside parentheses, since skill names
-    sometimes list examples in parens (e.g. "Uplift Modeling (CausalML,
-    PyLift)"), which a naive comma-split would break apart."""
+    """Split on the model's item separator, then on "," — but never split a
+    comma that's inside parentheses, since skill names sometimes list
+    examples in parens (e.g. "Uplift Modeling (CausalML, PyLift)"), which a
+    naive comma-split would break apart. The separator varies by run ("|",
+    "·", "•", ";"), so normalize them all to "|" first — otherwise an entire
+    unsplit category collapses into one long "item" that then fails the
+    length check in clean_skill_label() and the whole category is lost."""
+    text = re.sub(r"\s*[·•;]\s*", "|", text)
     items = []
     for chunk in text.split("|"):
         depth = 0
@@ -465,6 +435,51 @@ def _split_skill_items(text: str) -> list:
 
 CATEGORY_LINE_RE = re.compile(r"^-?\s*\*\*([^*]+):\*\*\s*(.+)$")
 
+_SKILL_SENTENCE_PREFIX_RE = re.compile(
+    r"^(led|built|drove|designed|managed|developed|created|delivered|"
+    r"positioned|foundational|proven|owns?|owned|deployed|engineered)\b",
+    re.IGNORECASE,
+)
+
+
+def clean_skill_label(raw: str) -> str | None:
+    """Backstop against a skill entry being a full sentence, project
+    description, or duration/scope qualifier — e.g. "Team Leadership" is a
+    skill, "Team Leadership (8+ years managing direct reports)" is not. The
+    length limit is deliberately loose: the 1-3 word ideal is enforced as a
+    rule of thumb in the prompt, and legitimate standard terms are sometimes
+    longer (e.g. "Data Science End-to-End Project Facilitation"), so this only
+    rejects entries long enough to clearly be prose. Strips an overly long
+    trailing parenthetical and keeps the base label when possible, rather than
+    discarding the whole entry."""
+    label = raw.strip()
+
+    match = re.match(r"^(.*?)\s*\(([^)]*)\)\s*$", label)
+    if match:
+        base, paren = match.group(1).strip(), match.group(2).strip()
+        if len(paren) > 20 or re.search(r"\d", paren):
+            label = base  # the parenthetical is an explanation, not a short qualifier
+
+    # A tenure/duration reference ("8+ years managing...") is an achievement
+    # claim, not a skill label — reject rather than try to salvage it.
+    if re.search(r"\d+\+?\s*years?\b", label, re.IGNORECASE):
+        return None
+
+    # A dollar figure, a mid-sentence preposition ("... of a $1B+ multi-brand"),
+    # or a numeric scope qualifier ("... teams of 12+") signals a fragment cut
+    # out of a longer sentence, not a clean label — these can still be short
+    # enough to pass the length check.
+    if "$" in label or re.search(
+        r"\b(of|for|with)\s+(a|the)\b|\bof\s+\d", label, re.IGNORECASE
+    ):
+        return None
+
+    if not label or len(label.split()) > 7 or len(label) > 55:
+        return None
+    if _SKILL_SENTENCE_PREFIX_RE.match(label):
+        return None
+    return label
+
 
 def extract_skills_from_draft(draft: str) -> list:
     """Deterministically pull every skill/tool out of the draft's
@@ -473,14 +488,19 @@ def extract_skills_from_draft(draft: str) -> list:
     item | item", optionally bulleted) structurally, wherever it appears,
     since the model uses a different heading each run ("CORE COMPETENCIES",
     "CORE STRENGTHS", ...) rather than matching on heading text. Falls back
-    to a heading-based search for a flat, uncategorized list."""
+    to a heading-based search for a flat, uncategorized list. Every candidate
+    item is passed through clean_skill_label() as a backstop against verbose,
+    sentence-like entries slipping through despite the prompt instruction."""
     lines = draft.splitlines()
 
     items = []
     for line in lines:
         match = CATEGORY_LINE_RE.match(line.strip())
         if match:
-            items.extend(_split_skill_items(match.group(2)))
+            for raw in _split_skill_items(match.group(2)):
+                cleaned = clean_skill_label(raw)
+                if cleaned:
+                    items.append(cleaned)
     if items:
         return items
 
@@ -499,7 +519,10 @@ def extract_skills_from_draft(draft: str) -> list:
         if re.match(r"^#{1,6}\s+\S", stripped) or re.match(r"^-{3,}$", stripped):
             break  # next section heading or a horizontal-rule divider
         content = re.sub(r"^[-*]\s+", "", stripped)  # drop a bullet marker, if any
-        items.extend(_split_skill_items(content))
+        for raw in _split_skill_items(content):
+            cleaned = clean_skill_label(raw)
+            if cleaned:
+                items.append(cleaned)
     return items
 
 
@@ -507,7 +530,8 @@ def tailor_content(profile_text: str, resume_text: str, job_text: str, jobs: lis
     claude_bin = _find_claude_cli()
     companies = [job["company"] for job in jobs]
     company_block = "\n".join(companies)
-    draft_system_prompt = TAILOR_SYSTEM_PROMPT.replace("{company_block}", company_block)
+    contract = PIPELINE_OUTPUT_CONTRACT.replace("{company_block}", company_block)
+    draft_system_prompt = load_tailoring_rules() + contract
 
     user_message = f"""PROFILE (source of truth for accomplishments, skills, and details):
 {profile_text}
@@ -785,7 +809,7 @@ def _build_styles(d: docx.Document) -> dict:
 
     bullet_style = styles["List Bullet"]
     bullet_style.font.name = "Calibri"
-    bullet_style.font.size = Pt(10)
+    bullet_style.font.size = Pt(10.5)  # match body text in Summary/Education/Skills
     bullet_style.paragraph_format.left_indent = Inches(0.2)
     bullet_style.paragraph_format.space_after = Pt(3)
     bullet_style.paragraph_format.line_spacing = 1.0
