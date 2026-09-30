@@ -4,7 +4,6 @@ import type {
   FactsPayload,
   GuardrailsPayload,
   ImportCandidate,
-  JobSummary,
   Project,
   ProjectDetail,
   ProfilePayload,
@@ -82,11 +81,5 @@ export function usePatchProject(id: string) {
       qc.invalidateQueries({ queryKey: keys.project(id) });
       qc.invalidateQueries({ queryKey: keys.projects });
     },
-  });
-}
-
-export function useStartJob() {
-  return useMutation({
-    mutationFn: ({ path, body }: { path: string; body?: unknown }) => api.post<JobSummary>(path, body),
   });
 }

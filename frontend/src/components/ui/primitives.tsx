@@ -35,9 +35,6 @@ export const CardDescription = ({ className, ...props }: React.HTMLAttributes<HT
 export const CardContent = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn("p-5 pt-0", className)} {...props} />
 );
-export const CardFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex items-center gap-2 border-t px-5 py-3", className)} {...props} />
-);
 
 // ---- Inputs -----------------------------------------------------------------
 
