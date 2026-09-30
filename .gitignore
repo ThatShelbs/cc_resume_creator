@@ -10,3 +10,15 @@ resume_create/*
 !resume_create/.gitkeep
 resume_archive/*
 !resume_archive/.gitkeep
+
+# Resume Studio (browser app): per-project data and local state. Never commit.
+projects/
+demo_workspace/
+app_settings.json
+.studio_port
+.studio_tmp/
+.venv/
+webapp/frontend/node_modules/
+webapp/frontend/dist/
+webapp/frontend/openapi.json
+webapp/frontend/.build-hash
