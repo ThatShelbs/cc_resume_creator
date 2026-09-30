@@ -1,0 +1,135 @@
+<!doctype html>
+<!--
+  Resume Taylor banner. scripts/make_brand_assets.py renders this with a real
+  browser into docs/brand/banner.png (README hero, ?v=readme) and
+  docs/brand/social-preview.png (GitHub social preview, ?v=social).
+  Fonts come from the web app's node_modules (run npm install in
+  webapp/frontend first); without them it falls back to Georgia and Segoe UI.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Resume Taylor banner</title>
+<style>
+  @font-face {
+    font-family: "Fraunces Variable";
+    font-style: italic;
+    font-weight: 100 900;
+    src: url(../../webapp/frontend/node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-italic.woff2) format("woff2-variations");
+  }
+  @font-face {
+    font-family: "Inter Variable";
+    font-style: normal;
+    font-weight: 100 900;
+    src: url(../../webapp/frontend/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2) format("woff2-variations");
+  }
+  :root {
+    --navy: #343C5B; --sage: #BDD6B9; --gold: #F6CC8F; --lilac: #D0B3D1; --burgundy: #843745;
+    --sky: #C2E8F6; --gray: #7A7474; --pink: #F8BDD5; --stone: #D3CFC8; --tan: #CEB499;
+    --cream: #FBF8F4;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 100%; height: 100%; }
+  body {
+    font-family: "Inter Variable", "Segoe UI", system-ui, sans-serif;
+    color: var(--cream);
+    background:
+      radial-gradient(900px 520px at 88% 115%, rgba(132, 55, 69, 0.75), transparent 70%),
+      radial-gradient(700px 420px at -5% -20%, rgba(208, 179, 209, 0.22), transparent 70%),
+      linear-gradient(160deg, #3a4366, #262c45 70%);
+    overflow: hidden;
+    position: relative;
+  }
+  .seam {
+    position: absolute; inset: 18px; border-radius: 22px;
+    border: 2px dashed rgba(206, 180, 153, 0.35);
+  }
+  .stage {
+    position: absolute; inset: 0; display: flex; align-items: center; gap: 56px;
+    padding: 0 96px 40px;
+  }
+  .mark {
+    width: 196px; height: 196px; flex: none; border-radius: 46px;
+    box-shadow: 0 30px 60px -20px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+  .word { font-size: 92px; font-weight: 750; letter-spacing: -0.035em; line-height: 1; white-space: nowrap; }
+  .word em {
+    font-family: "Fraunces Variable", Georgia, serif; font-style: italic; font-weight: 600;
+    color: var(--pink); letter-spacing: -0.01em; margin-left: 6px;
+  }
+  .tag { margin-top: 18px; font-size: 27px; color: var(--stone); font-weight: 450; letter-spacing: -0.01em; }
+  .chips { margin-top: 28px; display: flex; gap: 12px; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 9px; padding: 8px 16px 8px 13px;
+    border-radius: 999px; font-size: 18px; font-weight: 550; color: var(--cream);
+    background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.12);
+  }
+  .chip i { width: 11px; height: 11px; border-radius: 50%; display: block; }
+  .strand { position: absolute; left: 0; bottom: 46px; width: 100%; height: 40px; }
+  .spark { position: absolute; }
+
+  /* README hero: wide and short. */
+  body.readme .stage { padding-bottom: 34px; }
+  body.readme .strand { bottom: 34px; }
+  /* Social preview (1280x640): a little more air. */
+  body.social .stage { padding-bottom: 70px; }
+  body.social .word { font-size: 96px; }
+</style>
+</head>
+<body>
+  <div class="seam"></div>
+
+  <svg class="spark" style="left: 70px; top: 58px; width: 26px; color: var(--gold)" viewBox="0 0 24 24"><path fill="currentColor" d="M12 0l2.7 9.3L24 12l-9.3 2.7L12 24l-2.7-9.3L0 12l9.3-2.7z"/></svg>
+  <svg class="spark" style="right: 120px; top: 64px; width: 34px; color: var(--pink)" viewBox="0 0 24 24"><path fill="currentColor" d="M12 0l2.7 9.3L24 12l-9.3 2.7L12 24l-2.7-9.3L0 12l9.3-2.7z"/></svg>
+  <svg class="spark" style="right: 196px; top: 128px; width: 14px; color: var(--sky)" viewBox="0 0 24 24"><path fill="currentColor" d="M12 0l2.7 9.3L24 12l-9.3 2.7L12 24l-2.7-9.3L0 12l9.3-2.7z"/></svg>
+  <svg class="spark" style="right: 84px; bottom: 120px; width: 18px; color: var(--lilac)" viewBox="0 0 24 24"><path fill="currentColor" d="M12 0l2.7 9.3L24 12l-9.3 2.7L12 24l-2.7-9.3L0 12l9.3-2.7z"/></svg>
+  <svg class="spark" style="left: 330px; top: 40px; width: 12px; color: var(--sage)" viewBox="0 0 24 24"><path fill="currentColor" d="M12 0l2.7 9.3L24 12l-9.3 2.7L12 24l-2.7-9.3L0 12l9.3-2.7z"/></svg>
+
+  <div class="stage">
+    <img class="mark" src="../../webapp/frontend/public/favicon.svg" alt="">
+    <div>
+      <div class="word">Resume<em>Taylor</em></div>
+      <div class="tag">Truthful resumes, tailored to every job posting.</div>
+      <div class="chips">
+        <span class="chip"><i style="background: var(--sage)"></i>Runs on your computer</span>
+        <span class="chip"><i style="background: var(--gold)"></i>Claude Code</span>
+        <span class="chip"><i style="background: var(--sky)"></i>FastAPI + React</span>
+        <span class="chip"><i style="background: var(--pink)"></i>MIT licensed</span>
+      </div>
+    </div>
+  </div>
+
+  <svg class="strand" id="strand" preserveAspectRatio="none"></svg>
+
+  <script>
+    // Theme variant from the query string, then string the bead strand across.
+    const v = new URLSearchParams(location.search).get("v") || "readme";
+    document.body.classList.add(v);
+    const svg = document.getElementById("strand");
+    const w = svg.clientWidth, h = svg.clientHeight, mid = h / 2;
+    const ns = "http://www.w3.org/2000/svg";
+    const colors = ["#BDD6B9", "#F6CC8F", "#D0B3D1", "#C2E8F6", "#F8BDD5", "#CEB499", "#843745"];
+    svg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    const thread = document.createElementNS(ns, "path");
+    const sag = (x) => mid + Math.sin((x / w) * Math.PI) * 6;
+    thread.setAttribute("d", `M0 ${sag(0)} Q ${w / 2} ${mid + 12} ${w} ${sag(w)}`);
+    thread.setAttribute("stroke", "rgba(251,248,244,0.35)");
+    thread.setAttribute("stroke-width", "1.5");
+    thread.setAttribute("fill", "none");
+    svg.appendChild(thread);
+    const step = 26, pad = 60;
+    let i = 0;
+    for (let x = pad; x <= w - pad; x += step, i++) {
+      const c = document.createElementNS(ns, "circle");
+      c.setAttribute("cx", x);
+      c.setAttribute("cy", sag(x));
+      c.setAttribute("r", i % 5 === 2 ? 8.5 : 7);
+      c.setAttribute("fill", colors[i % colors.length]);
+      c.setAttribute("stroke", "rgba(0,0,0,0.18)");
+      c.setAttribute("stroke-width", "1");
+      svg.appendChild(c);
+    }
+    document.body.dataset.ready = "1";
+  </script>
+</body>
+</html>

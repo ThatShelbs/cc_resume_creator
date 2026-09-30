@@ -1,12 +1,12 @@
 /**
- * Thin fetch wrapper for the Resume Studio API. Every call carries the
+ * Thin fetch wrapper for the Resume Taylor API. Every call carries the
  * per-launch session token the server injected into index.html; links that
  * can't set headers (downloads, the PDF viewer, EventSource) pass it as ?t=.
  */
 
-const injected = document.querySelector('meta[name="studio-token"]')?.getAttribute("content");
+const injected = document.querySelector('meta[name="taylor-token"]')?.getAttribute("content");
 export const TOKEN: string =
-  injected && injected !== "__STUDIO_TOKEN__" ? injected : (import.meta.env.VITE_STUDIO_TOKEN ?? "dev");
+  injected && injected !== "__TAYLOR_TOKEN__" ? injected : (import.meta.env.VITE_TAYLOR_TOKEN ?? "dev");
 
 export class ApiError extends Error {
   status: number;
@@ -40,14 +40,14 @@ async function request<T>(method: string, path: string, body?: unknown, init?: R
     res = await fetch(path, {
       method,
       headers: {
-        "X-Studio-Token": TOKEN,
+        "X-Taylor-Token": TOKEN,
         ...(body !== undefined && !isForm ? { "Content-Type": "application/json" } : {}),
       },
       body: body === undefined ? undefined : isForm ? body : JSON.stringify(body),
       ...init,
     });
   } catch {
-    throw new ApiError("Can't reach Resume Studio. Is the launcher window still open?", 0);
+    throw new ApiError("Can't reach Resume Taylor. Is the launcher window still open?", 0);
   }
   const text = await res.text();
   let data: unknown = text;

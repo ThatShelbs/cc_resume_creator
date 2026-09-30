@@ -1,20 +1,22 @@
 /** Shared page-level building blocks. */
 import { AlertCircle, AlertTriangle, Info, type LucideIcon } from "lucide-react";
+import type React from "react";
 import type { ReactNode } from "react";
 import type { ProjectStatus, Severity } from "@/lib/types";
 import { cn, hueFor, initials } from "@/lib/utils";
+import { SWATCHES } from "./brand";
 import { Badge } from "./ui/primitives";
 
 export function Logo({ className, withText = true }: { className?: string; withText?: boolean }) {
   return (
     <div className={cn("flex items-center gap-2.5", className)}>
-      <img src="/favicon.svg" alt="" className="size-7 rounded-lg shadow-soft" />
+      <img src="/favicon.svg" alt="" className="size-8 rounded-[10px] shadow-soft" />
       {withText && (
         <div className="leading-none">
-          <div className="text-[15px] font-semibold tracking-tight">Resume Studio</div>
-          <div className="mt-0.5 text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
-            Truthful tailoring
+          <div className="text-[15.5px] font-semibold tracking-tight">
+            Resume <span className="font-display font-semibold italic text-primary">Taylor</span>
           </div>
+          <div className="mt-1 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground">Truthfully tailored</div>
         </div>
       )}
     </div>
@@ -62,7 +64,7 @@ export function EmptyState({
   return (
     <div
       className={cn(
-        "flex flex-col items-center justify-center rounded-xl border border-dashed bg-card/50 px-6 py-14 text-center",
+        "stitch flex flex-col items-center justify-center rounded-xl border bg-card/50 px-6 py-14 text-center",
         className,
       )}
     >
@@ -80,20 +82,17 @@ export function EmptyState({
 }
 
 export function Monogram({ text, className }: { text: string; className?: string }) {
-  const hue = hueFor(text || "?");
+  const swatch = SWATCHES[hueFor(text || "?") % SWATCHES.length];
   return (
     <div
       aria-hidden
       className={cn(
-        "flex size-10 shrink-0 items-center justify-center rounded-lg text-sm font-semibold tracking-tight",
+        "flex size-10 shrink-0 items-center justify-center rounded-lg bg-[hsl(var(--mono)/0.5)] text-sm font-semibold tracking-tight text-brand-navy ring-1 ring-inset ring-[hsl(var(--mono))] dark:bg-[hsl(var(--mono)/0.14)] dark:text-[hsl(var(--mono))] dark:ring-[hsl(var(--mono)/0.3)]",
         className,
       )}
-      style={{
-        background: `linear-gradient(135deg, hsl(${hue} 70% 55% / 0.16), hsl(${(hue + 40) % 360} 70% 55% / 0.22))`,
-        color: `hsl(${hue} 55% 42%)`,
-      }}
+      style={{ "--mono": `var(--brand-${swatch})` } as React.CSSProperties}
     >
-      <span className="dark:brightness-[1.6]">{initials(text)}</span>
+      {initials(text)}
     </div>
   );
 }
@@ -143,7 +142,7 @@ export function Callout({
   className?: string;
 }) {
   const tones = {
-    info: "border-primary/20 bg-primary/[0.05] [&_.callout-icon]:text-primary",
+    info: "border-info/25 bg-brand-sky/[0.18] [&_.callout-icon]:text-info dark:bg-info/[0.07]",
     warning: "border-warning/30 bg-warning/[0.07] [&_.callout-icon]:text-warning",
     error: "border-destructive/30 bg-destructive/[0.06] [&_.callout-icon]:text-destructive",
     success: "border-success/30 bg-success/[0.07] [&_.callout-icon]:text-success",

@@ -1,5 +1,5 @@
 /// <reference types="vite/client" />
 
 interface ImportMetaEnv {
-  readonly VITE_STUDIO_TOKEN?: string;
+  readonly VITE_TAYLOR_TOKEN?: string;
 }

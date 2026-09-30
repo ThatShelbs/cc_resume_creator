@@ -1,5 +1,5 @@
 /**
- * Response shapes of the Resume Studio API. Request bodies that are Pydantic
+ * Response shapes of the Resume Taylor API. Request bodies that are Pydantic
  * models on the server are also generated into api-schema.d.ts
  * (`npm run gen:api`); the aliases at the bottom tie the two together so a
  * server-side model change surfaces here as a type error.

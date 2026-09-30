@@ -5,7 +5,7 @@
 - The app is a local web page served from `127.0.0.1`. It refuses connections from other
   computers and from other websites, and every request needs a random token created at launch.
 - Your profile, resumes, fact bank, job postings, and generated files are stored in your data
-  folder (`%LOCALAPPDATA%\ResumeStudio` by default), outside the code folder and outside git.
+  folder (`%LOCALAPPDATA%\ResumeTaylor` by default), outside the code folder and outside git.
 - An API key entered in Settings is saved in `secrets.json` in that folder. It is never returned
   by the app's API, never written to logs, and only passed to the Claude tool when you generate.
 

@@ -1,11 +1,11 @@
 """
-Start Resume Studio and open it in your browser.
+Start Resume Taylor and open it in your browser.
 
     python launcher.py                       # your real data (this folder)
     python launcher.py --data-root demo_workspace
     python launcher.py --dev                 # Vite hot reload + API (for development)
 
-On Windows, double-click "Launch Resume Studio.bat" instead: it prepares a
+On Windows, double-click "Launch Resume Taylor.bat" instead: it prepares a
 private Python environment first, then runs this. The launcher builds the web
 app when its sources changed, reuses an already-running instance for the same
 data folder, and stops the server when you close its window (or press Ctrl+C).
@@ -33,11 +33,12 @@ BUILD_STAMP = FRONTEND / ".build-hash"  # outside dist/, which each build emptie
 DEV_API_PORT = 8765  # vite.config.ts proxies /api here
 
 BANNER = r"""
-  ____                                  ____  _             _ _
- |  _ \ ___  ___ _   _ _ __ ___   ___  / ___|| |_ _   _  __| (_) ___
- | |_) / _ \/ __| | | | '_ ` _ \ / _ \ \___ \| __| | | |/ _` | |/ _ \
- |  _ <  __/\__ \ |_| | | | | | |  __/  ___) | |_| |_| | (_| | | (_) |
- |_| \_\___||___/\__,_|_| |_| |_|\___| |____/ \__|\__,_|\__,_|_|\___/
+  ____                                   _____                _
+ |  _ \ ___  ___ _   _ _ __ ___   ___   |_   _|  __ _  _   _ | |  ___   _ __
+ | |_) / _ \/ __| | | | '_ ` _ \ / _ \    | |   / _` || | | || | / _ \ | '__|
+ |  _ <  __/\__ \ |_| | | | | | |  __/    | |  | (_| || |_| || || (_) || |
+ |_| \_\___||___/\__,_|_| |_| |_|\___|    |_|   \__,_| \__, ||_| \___/ |_|
+                                                       |___/
 """
 
 
@@ -52,7 +53,7 @@ def fail(msg: str) -> None:
 
 def check_python() -> None:
     if sys.version_info < (3, 10):
-        fail(f"Resume Studio needs Python 3.10 or newer (this is {sys.version.split()[0]}). Get it from python.org/downloads.")
+        fail(f"Resume Taylor needs Python 3.10 or newer (this is {sys.version.split()[0]}). Get it from python.org/downloads.")
     missing = []
     for module in ("fastapi", "uvicorn", "docx", "yaml", "pypdf", "multipart"):
         try:
@@ -63,7 +64,7 @@ def check_python() -> None:
         fail(
             f"Missing Python packages: {', '.join(missing)}.\n"
             f"  Run:  {Path(sys.executable).name} -m pip install -r requirements.txt\n"
-            "  (or double-click 'Launch Resume Studio.bat', which does this for you)."
+            "  (or double-click 'Launch Resume Taylor.bat', which does this for you)."
         )
 
 
@@ -139,13 +140,13 @@ def ensure_frontend(force: bool = False) -> None:
 def health(port: int, timeout: float = 1.0) -> bool:
     try:
         with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/health", timeout=timeout) as r:
-            return json.loads(r.read()).get("app") == "resume-studio"
+            return json.loads(r.read()).get("app") == "resume-taylor"
     except (OSError, ValueError):
         return False
 
 
 def port_file(data_root: Path) -> Path:
-    return data_root / ".studio_port"
+    return data_root / ".taylor_port"
 
 
 def running_port(data_root: Path) -> int | None:
@@ -173,15 +174,15 @@ def open_when_ready(port: int, url: str, open_browser: bool) -> None:
         if health(port, 0.5):
             break
         time.sleep(0.2)
-    say(f"  Resume Studio is running at {url}")
+    say(f"  Resume Taylor is running at {url}")
     say("  Keep this window open while you use it. Close it (or press Ctrl+C) to stop.\n")
     if open_browser:
         webbrowser.open(url)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Start Resume Studio and open it in your browser.")
-    parser.add_argument("--data-root", type=Path, help="folder with resume_input/, projects/, ... (default: ResumeStudio in your local app data folder)")
+    parser = argparse.ArgumentParser(description="Start Resume Taylor and open it in your browser.")
+    parser.add_argument("--data-root", type=Path, help="folder with resume_input/, projects/, ... (default: ResumeTaylor in your local app data folder)")
     parser.add_argument("--port", type=int, default=8765, help="first port to try (default 8765)")
     parser.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
     parser.add_argument("--rebuild", action="store_true", help="force a rebuild of the web app")
@@ -190,7 +191,7 @@ def main() -> None:
 
     say(BANNER)
     check_python()
-    from studio.paths import default_data_root, legacy_data_in_code_folder, migrate_legacy_data
+    from taylor.paths import default_data_root, legacy_data_in_code_folder, migrate_legacy_data
 
     data_root = (args.data_root or default_data_root()).resolve()
     data_root.mkdir(parents=True, exist_ok=True)
@@ -204,7 +205,7 @@ def main() -> None:
     existing = running_port(data_root)
     if existing and not args.dev:
         url = f"http://127.0.0.1:{existing}/"
-        say(f"  Resume Studio is already running at {url}; opening it.")
+        say(f"  Resume Taylor is already running at {url}; opening it.")
         if not args.no_browser:
             webbrowser.open(url)
         return
@@ -216,7 +217,7 @@ def main() -> None:
         if not (FRONTEND / "node_modules").exists():
             run_npm("install")
         port, token = DEV_API_PORT, "dev"
-        vite = subprocess.Popen([npm(), "run", "dev"], cwd=str(FRONTEND), env={**os.environ, "VITE_STUDIO_TOKEN": token})
+        vite = subprocess.Popen([npm(), "run", "dev"], cwd=str(FRONTEND), env={**os.environ, "VITE_TAYLOR_TOKEN": token})
         url = "http://localhost:5173/"
     else:
         ensure_frontend(force=args.rebuild)
@@ -225,8 +226,8 @@ def main() -> None:
 
     import uvicorn
 
-    from studio.api import create_app
-    from studio.paths import Paths
+    from taylor.api import create_app
+    from taylor.paths import Paths
 
     app = create_app(Paths(data_root), token)
     port_file(data_root).write_text(json.dumps({"port": port, "pid": os.getpid()}))
@@ -243,7 +244,7 @@ def main() -> None:
             pass
         if vite:
             vite.terminate()
-        say("  Resume Studio stopped.")
+        say("  Resume Taylor stopped.")
 
 
 if __name__ == "__main__":

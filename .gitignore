@@ -11,11 +11,13 @@ resume_create/*
 resume_archive/*
 !resume_archive/.gitkeep
 
-# Resume Studio (browser app): per-project data and local state. Never commit.
+# Resume Taylor (browser app): per-project data and local state. Never commit.
 /projects/
 /demo_workspace/
 /app_settings.json
+.taylor_port
 .studio_port
+.taylor_tmp/
 .studio_tmp/
 /.venv/
 webapp/frontend/node_modules/
