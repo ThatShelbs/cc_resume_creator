@@ -1,0 +1,10 @@
+# Test-only never-claim list (the shipped starter is do_not_claim.example.txt).
+\bcertified\b
+\bcertification\b
+\b(PMP|CPA|CFA|CISSP|Six Sigma)\b
+\bPh\.?D\b
+\b(as|an?)\s+(senior\s+|lead\s+)?full[- ]?stack\s+(engineer|developer)
+\b(as|an?)\s+(senior\s+|lead\s+)?software\s+(engineer|developer)
+\b(as|an?)\s+(senior\s+|lead\s+)?(UX|product)\s+designer
+\bFigma\b
+\b(expert|expertise|mastery)\s+(in|with)\s+(React|JavaScript|TypeScript|AWS|Sagemaker|Kubernetes)\b

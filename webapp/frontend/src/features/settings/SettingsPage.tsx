@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { BookOpen, CheckCircle2, FolderOpen, Power, Save, XCircle } from "lucide-react";
+import { Archive, BookOpen, CheckCircle2, FolderOpen, KeyRound, Power, Save, XCircle } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common";
@@ -10,7 +10,7 @@ import { Card, Input, Separator, Skeleton, Switch } from "@/components/ui/primit
 import { TemplatePicker } from "@/features/projects/TemplatePicker";
 import { api, withToken } from "@/lib/api";
 import { keys, useSettings, useSystem } from "@/lib/queries";
-import type { Settings, TemplateKey } from "@/lib/types";
+import type { ApiKeyStatus, Settings, TemplateKey } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 function Row({ title, description, children, className }: { title: string; description?: ReactNode; children: ReactNode; className?: string }) {
@@ -138,11 +138,22 @@ export default function SettingsPage() {
 
       <h2 className="mt-8 text-sm font-semibold">System</h2>
       <Card className="mt-3 divide-y p-6">
-        <Row title="Claude Code CLI" description="Generation runs through your logged-in Claude subscription. No API key needed.">
+        <Row
+          title="Claude sign-in"
+          description="Use your Claude subscription (recommended) or an Anthropic API key, which is billed per use."
+        >
+          <Status
+            ok={system?.claude.logged_in === true}
+            label={system?.claude.logged_in ? "Signed in with your Claude account" : "Not signed in (run claude /login in a terminal)"}
+          />
+          <ApiKeyEditor status={system?.api_key} />
+        </Row>
+        <Row title="Claude Code CLI" description="The command line tool that does the writing. The launcher installs it for you.">
           <Status ok={!!system?.claude.found} label={system?.claude.found ? (system.claude.version ?? "Installed") : "Not found on PATH"} />
           {system?.claude.path && <p className="mt-1 truncate text-xs text-muted-foreground">{system.claude.path}</p>}
           <p className="mt-2 text-xs text-muted-foreground">
-            If generation says you're signed out, run <code className="rounded bg-muted px-1">claude /login</code> in a terminal.
+            If generation says you're signed out, run <code className="rounded bg-muted px-1">claude /login</code> in a terminal, or
+            add an API key above.
           </p>
         </Row>
         <Row title="PDF export" description="Uses Microsoft Word on Windows. Without it you still get .docx files.">
@@ -159,6 +170,18 @@ export default function SettingsPage() {
             </Button>
             <Button size="sm" variant="outline" onClick={() => openFolder("archive")}>
               <FolderOpen /> Backups
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() =>
+                api
+                  .post<{ path: string }>("/api/system/backup")
+                  .then((r) => toast.success(`Backup saved: ${r.path}`))
+                  .catch((e: Error) => toast.error(e.message))
+              }
+            >
+              <Archive /> Back up everything
             </Button>
           </div>
         </Row>
@@ -186,6 +209,71 @@ export default function SettingsPage() {
           onConfirm={() => api.post("/api/system/shutdown").finally(() => setStopped(true))}
         />
       </AlertDialog>
+    </div>
+  );
+}
+
+function ApiKeyEditor({ status }: { status?: ApiKeyStatus }) {
+  const qc = useQueryClient();
+  const [key, setKey] = useState("");
+  const done = () => qc.invalidateQueries({ queryKey: keys.system });
+  const save = useMutation({
+    mutationFn: () => api.put<ApiKeyStatus>("/api/settings/api-key", { key }),
+    onSuccess: () => {
+      setKey("");
+      toast.success("API key saved on this computer.");
+      return done();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const remove = useMutation({
+    mutationFn: () => api.del<ApiKeyStatus>("/api/settings/api-key"),
+    onSuccess: () => {
+      toast.success("API key removed.");
+      return done();
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <div className="mt-4">
+      <div className="flex items-center gap-2 text-xs font-medium">
+        <KeyRound className="size-3.5" /> Anthropic API key (optional)
+      </div>
+      {status?.set && (
+        <p className="mt-1 text-xs text-muted-foreground">
+          {status.source === "env" ? "Set in your .env file" : "Saved in the app"}, ending in {status.last4}. It takes priority over the
+          Claude sign-in.
+        </p>
+      )}
+      <form
+        className="mt-2 flex flex-wrap gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (key.trim()) save.mutate();
+        }}
+      >
+        <Input
+          type="password"
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="sk-ant-..."
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
+          className="w-72 max-w-full"
+          aria-label="Anthropic API key"
+        />
+        <Button size="sm" type="submit" disabled={!key.trim() || save.isPending}>
+          Save key
+        </Button>
+        {status?.set && status.source === "app" && (
+          <Button size="sm" type="button" variant="outline" disabled={remove.isPending} onClick={() => remove.mutate()}>
+            Remove
+          </Button>
+        )}
+      </form>
+      <p className="mt-2 text-xs text-muted-foreground">
+        Stored only in your data folder (never uploaded to GitHub) and sent only to Claude when you generate.
+      </p>
     </div>
   );
 }

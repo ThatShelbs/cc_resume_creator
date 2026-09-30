@@ -85,6 +85,7 @@ COVER_LETTER_SKILL_PATH = ROOT / ".claude" / "skills" / "cover-letter" / "SKILL.
 
 # Hard "never claim" list (claim tier T4 in the skill): one regex per line.
 DO_NOT_CLAIM_PATH = ROOT / "do_not_claim.txt"
+DO_NOT_CLAIM_EXAMPLE = ROOT / "do_not_claim.example.txt"  # tracked starter list
 
 # Hand-maintained bank of atomic, employer-tagged facts (drafted by
 # build_fact_bank.py). When present, every bullet must cite fact ids from it.
@@ -387,11 +388,17 @@ def _clean_subprocess_env() -> dict:
     # run from inside a Claude Code session) so the child CLI call behaves like
     # a clean, standalone invocation rather than a nested session — otherwise
     # it starts narrating/asking follow-up questions like an interactive agent.
-    return {
+    # The one exception is ANTHROPIC_API_KEY, which the user set on purpose
+    # (in .env or the app's Settings) to pay per use instead of using a login.
+    env = {
         k: v
         for k, v in os.environ.items()
         if not k.upper().startswith("CLAUDE") and not k.upper().startswith("ANTHROPIC")
     }
+    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+    if key:
+        env["ANTHROPIC_API_KEY"] = key
+    return env
 
 
 def _invoke_claude(
@@ -825,6 +832,8 @@ def warn_analogy_phrasing(bullets_by_company: dict) -> None:
 def load_deny_patterns(path: Path | None = None) -> list:
     """Compile the hard "never claim" list. Missing file means no deny list."""
     path = path or DO_NOT_CLAIM_PATH
+    if not path.exists() and path == DO_NOT_CLAIM_PATH:
+        path = DO_NOT_CLAIM_EXAMPLE  # fresh download: fall back to the starter list
     if not path.exists():
         return []
     patterns = []
@@ -1825,7 +1834,7 @@ def parse_args(argv=None) -> argparse.Namespace:
     parser.add_argument(
         "--fact-bank", type=Path, help=f"fact bank YAML (default: {FACT_BANK_PATH.relative_to(ROOT)})"
     )
-    parser.add_argument("--deny", type=Path, help=f"never-claim list (default: {DO_NOT_CLAIM_PATH.name})")
+    parser.add_argument("--deny", type=Path, help=f"never-claim list (default: {DO_NOT_CLAIM_PATH.name}, else the starter {DO_NOT_CLAIM_EXAMPLE.name})")
     parser.add_argument(
         "--cover-letter",
         action="store_true",

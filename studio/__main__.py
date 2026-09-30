@@ -17,7 +17,7 @@ def main(argv=None) -> None:
     parser = argparse.ArgumentParser(description="Resume Studio server")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--token", default=os.environ.get("STUDIO_TOKEN") or secrets.token_urlsafe(24))
-    parser.add_argument("--data-root", help="folder holding resume_input/, projects/, ... (default: this repo)")
+    parser.add_argument("--data-root", help="folder holding resume_input/, projects/, ... (default: ResumeStudio in your local app data folder)")
     args = parser.parse_args(argv)
 
     paths = Paths(Path(args.data_root).resolve()) if args.data_root else default_paths()

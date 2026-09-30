@@ -98,6 +98,14 @@ class Paths:
         return self.data_root / "app_settings.json"
 
     @property
+    def secrets_path(self) -> Path:
+        return self.data_root / "secrets.json"
+
+    @property
+    def sample_marker(self) -> Path:
+        return self.data_root / ".sample_data.json"
+
+    @property
     def scratch_dir(self) -> Path:
         return self.data_root / ".studio_tmp"
 
@@ -124,5 +132,53 @@ class Paths:
             d.mkdir(parents=True, exist_ok=True)
 
 
+def default_data_root() -> Path:
+    """Personal data lives outside the code folder so a re-download, `git pull`
+    or accidental `git add .` can never touch it (and it stays off OneDrive's
+    long paths). RESUME_STUDIO_DATA overrides; --data-root overrides that."""
+    import os
+
+    override = os.environ.get("RESUME_STUDIO_DATA", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    base = os.environ.get("LOCALAPPDATA") or os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
+    return Path(base) / "ResumeStudio"
+
+
+LEGACY_ITEMS = ("resume_input", "resume_archive", "projects", "do_not_claim.txt", "app_settings.json")
+
+
+def legacy_data_in_code_folder() -> list[str]:
+    """Personal data an older version kept inside the code folder, if any."""
+    found = []
+    for name in LEGACY_ITEMS:
+        p = CODE_ROOT / name
+        if p.is_dir() and any(f for f in p.iterdir() if f.name != ".gitkeep"):
+            found.append(name)
+        elif p.is_file():
+            found.append(name)
+    return found
+
+
+def migrate_legacy_data(target: Path) -> list[str]:
+    """Move (not copy) legacy personal data into `target`. Never overwrites."""
+    import shutil
+
+    moved = []
+    target.mkdir(parents=True, exist_ok=True)
+    for name in legacy_data_in_code_folder():
+        src, dst = CODE_ROOT / name, target / name
+        if dst.exists() and any(dst.iterdir() if dst.is_dir() else [1]):
+            continue
+        if dst.exists() and dst.is_dir():
+            remove_tree(dst)
+        shutil.move(str(src), str(dst))
+        if src.name in ("resume_input", "resume_archive"):
+            src.mkdir(exist_ok=True)
+            (src / ".gitkeep").touch()
+        moved.append(name)
+    return moved
+
+
 def default_paths() -> Paths:
-    return Paths(CODE_ROOT)
+    return Paths(default_data_root())

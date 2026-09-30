@@ -1,0 +1,22 @@
+# Hard "never claim" list. One case-insensitive regex per line; blank lines and
+# lines starting with # are ignored.
+#
+# Resume Studio passes these to the tailoring call as off-limits, then FAILS the
+# run (writes nothing) if any pattern matches the generated summary, bullets, or
+# skills. Use phrases, not bare words, so legitimate wording is not blocked.
+#
+# This is a starter list. Edit your own copy in the app (Evidence page) or in
+# do_not_claim.txt in your data folder. Add anything you do NOT want on your
+# resume: credentials you don't hold, job titles you never had, tools you have
+# not used, proficiency levels that overclaim.
+
+# Credentials and certifications. Delete a line if you actually hold it.
+certified
+certification
+(PMP|CPA|CFA|CISSP|Six Sigma)
+Ph\.?D
+
+# Examples (uncomment and adapt):
+# (as|an?)\s+(senior\s+|lead\s+)?software\s+(engineer|developer)
+# Figma
+# (expert|expertise|mastery)\s+(in|with)\s+(Python|Kubernetes)
