@@ -1,19 +1,19 @@
 """
 Render Resume Taylor's brand images from their sources, so the art only ever
-lives in two files: webapp/frontend/public/favicon.svg (the mark) and
+lives in two files: frontend/public/favicon.svg (the mark) and
 docs/brand/banner.html (the banner).
 
     python scripts/make_brand_assets.py
 
 Writes:
-  webapp/assets/resume-taylor.ico    desktop shortcut icon, 16 to 256 px
+  docs/brand/resume-taylor.ico       desktop shortcut icon, 16 to 256 px
   docs/brand/banner.png              README hero (1280x400 at 2x)
   docs/brand/social-preview.png      GitHub social preview (1280x640); upload it
                                      under the repo's Settings > Social preview
 
-Needs Playwright and Pillow (requirements-dev.txt) and drives the Microsoft
+Needs Playwright and Pillow (the backend[dev] extra) and drives the Microsoft
 Edge or Chrome already installed, so no browser download. Run `npm install` in
-webapp/frontend first so the banner gets its real fonts.
+frontend/ first so the banner gets its real fonts.
 """
 
 import base64
@@ -24,9 +24,9 @@ from PIL import Image
 from playwright.sync_api import sync_playwright
 
 ROOT = Path(__file__).resolve().parent.parent
-MARK = ROOT / "webapp" / "frontend" / "public" / "favicon.svg"
+MARK = ROOT / "frontend" / "public" / "favicon.svg"
 BANNER = ROOT / "docs" / "brand" / "banner.html"
-ICO = ROOT / "webapp" / "assets" / "resume-taylor.ico"
+ICO = ROOT / "docs" / "brand" / "resume-taylor.ico"
 OUT = ROOT / "docs" / "brand"
 
 

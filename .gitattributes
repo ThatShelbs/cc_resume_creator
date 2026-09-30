@@ -4,3 +4,10 @@
 *.png binary
 *.docx binary
 *.ico binary
+*.py text eol=lf
+*.ts text eol=lf
+*.tsx text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
