@@ -10,10 +10,6 @@ pipeline, so the app looks lived-in without any Claude calls.
 """
 
 import argparse
-import copy
-import json
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -21,36 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "examples"))
 
-import docx  # noqa: E402
-
-from demo_data import DEMO_RESULT, FACT_BANK, JOBS, PROFILE, RESUME  # noqa: E402
-from studio.paths import Paths, plain_path, remove_tree  # noqa: E402
-from studio.projects import ProjectStore, file_hash, now  # noqa: E402
-
-
-def write_docx(paragraphs: list, path: Path) -> None:
-    d = docx.Document()
-    for text, style in paragraphs:
-        d.add_paragraph(text, style=style)
-    d.save(str(path))
-
-
-def render(paths: Paths, store: ProjectStore, pid: str, template: str) -> None:
-    d = plain_path(store.dir(pid))
-    out = d / "outputs"
-    cmd = [
-        sys.executable, str(paths.generator_script),
-        "--profile", str(paths.latest("in_profile")),
-        "--resume", str(paths.latest("in_resume")),
-        "--job", str(d / "job.txt"),
-        "--fact-bank", str(paths.fact_bank_path),
-        "--deny", str(paths.deny_path),
-        "--render-json", str(d / "result.json"),
-        "--result-json", str(d / "result.json"),
-        "--out-dir", str(out),
-        "--template", template,
-    ]
-    subprocess.run(cmd, check=True, cwd=str(ROOT), stdout=subprocess.DEVNULL)
+from studio.demo import seed_workspace  # noqa: E402
+from studio.paths import Paths, remove_tree  # noqa: E402
 
 
 def main() -> None:
@@ -67,45 +35,7 @@ def main() -> None:
     paths = Paths(target)
     paths.ensure()
 
-    write_docx(PROFILE, paths.input_dir / "in_profile.docx")
-    write_docx(RESUME, paths.input_dir / "in_resume_Jordan-Rivera.docx")
-    paths.fact_bank_path.write_text(FACT_BANK, encoding="utf-8")
-    shutil.copy(ROOT / "do_not_claim.txt", paths.deny_path)
-
-    store = ProjectStore(paths.projects_dir, paths.trash_dir)
-    hashes = {
-        "profile": file_hash(paths.latest("in_profile")),
-        "resume": file_hash(paths.latest("in_resume")),
-        "fact_bank": file_hash(paths.fact_bank_path),
-    }
-    seeded = {"lumen": "modern", "tailspin": "classic"}
-    for key, job in JOBS.items():
-        meta = store.create(job_text=job["text"], company=job["company"], role=job["role"],
-                            template=seeded.get(key, "classic"))
-        store.update(meta.id, {"status": job["status"], **({"applied_on": "2026-09-22"} if job["status"] != "draft" else {})})
-        if key not in seeded:
-            continue
-        result = copy.deepcopy(DEMO_RESULT)
-        if key == "tailspin":
-            # Same true facts, different emphasis for a customer-insights role.
-            nw = result["experience"][0]["bullets"]
-            result["experience"][0]["bullets"] = [nw[2], nw[3], nw[1], nw[0]]
-            result["summary"] = (
-                "Analytics leader with 11 years of experience in customer segmentation, churn modeling, and forecasting. "
-                "Built a churn model that cut churn 12% in one year and store-level forecasts that reduced stockouts 18%, "
-                "and currently leads a team of 7 analysts and data scientists."
-            )
-        (store.dir(meta.id) / "result.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
-        render(paths, store, meta.id, seeded[key])
-        stamp = now()
-        store.touch(
-            meta.id,
-            rendered_at=stamp,
-            result_saved_at=stamp,
-            last_generate={"kind": "generate", "when": stamp, "ok": True, "model": "sonnet", "effort": "medium",
-                           "input_hashes": hashes},
-        )
-        print(f"Seeded {meta.id} ({seeded[key]})")
+    seed_workspace(paths)
     print(f"Demo workspace ready at {target}\nRun: python launcher.py --data-root {target.name}")
 
 
