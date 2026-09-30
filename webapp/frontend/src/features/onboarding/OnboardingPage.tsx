@@ -54,8 +54,8 @@ export default function OnboardingPage() {
           </Button>
         </div>
       </header>
-      <div className="mx-auto grid max-w-6xl gap-8 px-5 pb-16 pt-4 sm:px-8 md:grid-cols-[220px_1fr]">
-        <nav aria-label="Setup steps" className="md:sticky md:top-8 md:self-start">
+      <div className="mx-auto grid max-w-6xl grid-cols-1 gap-8 px-5 pb-16 pt-4 sm:px-8 md:grid-cols-[220px_minmax(0,1fr)]">
+        <nav aria-label="Setup steps" className="min-w-0 md:sticky md:top-8 md:self-start">
           <ol className="flex gap-2 overflow-x-auto md:grid md:gap-1">
             {STEPS.map((s, i) => {
               const done =

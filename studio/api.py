@@ -397,7 +397,7 @@ def create_app(paths: Paths, token: str, *, extra_hosts: set | None = None,
             "claude": claude_info(),
             "word": word_available(),
             "platform": sys.platform,
-            "data_root": str(paths.data_root),
+            "data_root": str(plain_path(paths.data_root)),
             "inputs": {
                 "profile": pp.name if pp else None,
                 "resume": rp.name if rp else None,
@@ -566,7 +566,10 @@ def create_app(paths: Paths, token: str, *, extra_hosts: set | None = None,
                 contact = g.parse_applicant_info(pp)
             except SystemExit:
                 contact = None
-        suffix = f"{contact['first_name']}-{contact['last_name']}".strip("-") if contact else "base"
+        if contact:
+            suffix = f"{contact['first_name']}-{contact['last_name']}".strip("-")
+        else:  # no profile yet (onboarding uploads the resume first): use the resume's header
+            suffix = resume_ingest.prefill_contact(body.structure)["name"].replace(" ", "-") or "base"
         suffix = re.sub(r"[^\w-]+", "-", suffix).strip("-") or "base"
         target = paths.input_dir / f"in_resume_{suffix}.docx"
         if existing:
