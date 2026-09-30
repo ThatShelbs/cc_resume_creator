@@ -32,7 +32,7 @@ the Claude Code CLI.
   <img src="docs/screenshots/workspace-dark.png" alt="The same workspace in night mode" width="49%">
 </p>
 
-*Screenshots use a fictional demo persona (`examples/demo_data.py`).*
+*Screenshots use a fictional demo persona (`backend/src/resume_taylor/sample_data/demo_data.py`).*
 
 ## Get started (Windows, about 10 minutes)
 

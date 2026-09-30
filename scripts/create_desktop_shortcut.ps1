@@ -3,7 +3,7 @@
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 $target = Join-Path $root "Launch Resume Taylor.bat"
-$icon = Join-Path $root "webapp\assets\resume-taylor.ico"
+$icon = Join-Path $root "docs\brand\resume-taylor.ico"
 if (-not (Test-Path $target)) { throw "Can't find $target" }
 
 $desktop = [Environment]::GetFolderPath("Desktop")

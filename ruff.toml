@@ -1,0 +1,16 @@
+# Lint only (no mass reformatting): the code was never wrapped to a fixed width.
+line-length = 130
+target-version = "py310"
+src = ["backend/src", "backend/tests"]
+extend-exclude = ["frontend", ".claude"]
+
+[lint]
+select = ["E", "F", "W", "I"]
+ignore = [
+    "E501",  # long lines are fine
+    "E741",  # short names like `l` in comprehensions
+    "E731",  # a named lambda in one test
+]
+
+[lint.isort]
+known-first-party = ["resume_taylor"]
