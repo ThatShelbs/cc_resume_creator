@@ -1,0 +1,32 @@
+# Example fact bank. See build_fact_bank.py for how a real one is drafted.
+facts:
+- id: F001
+  employer: Northwind Traders
+  kind: accomplishment
+  text: Built a customer churn model that cut churn 12% in one year.
+  metrics: ["12%"]
+  tags: [churn modeling, retention]
+- id: F002
+  employer: Northwind Traders
+  kind: responsibility
+  text: Led a team of 4 analysts.
+  metrics: ["4"]
+  tags: [team leadership]
+- id: F003
+  employer: Contoso Retail
+  kind: accomplishment
+  text: Automated weekly sales reporting, saving 10 hours per week.
+  metrics: ["10 hours"]
+  tags: [automation, reporting]
+- id: F004
+  employer: general
+  kind: tool
+  text: Python, SQL, and Tableau.
+  metrics: []
+  tags: [python, sql, tableau]
+- id: F005
+  employer: general
+  kind: skill
+  text: Forecasting and stakeholder management.
+  metrics: []
+  tags: [forecasting, stakeholder management]

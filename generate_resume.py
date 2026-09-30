@@ -3,20 +3,21 @@ Generate a tailored resume from the files in resume_input/.
 
 Contact info, education, and each employer's company/location/dates/title are
 extracted deterministically from resume_input/in_profile* and in_resume* —
-there's no tailoring judgment involved in those fields, so a single Claude
-Code CLI call (using your logged-in subscription, not a billed API key) is
-only asked to produce the parts that actually require judgment: a tailored
-summary, per-employer bullets selected from true source material, and a
-tailored skills list. The result is written to resume_create/ as .docx +
-.pdf; any resume already there is moved to resume_archive/ (.docx only)
-first.
+there's no tailoring judgment involved in those fields, so the Claude Code CLI
+(using your logged-in subscription, not a billed API key) is only asked to
+produce the parts that actually require judgment: a tailored summary,
+per-employer bullets selected from true source material, and a tailored skills
+list (one drafting call, then a narrow JSON-transcription call). The result is
+written to resume_create/ as .docx + .pdf + a _report.md audit trail; any
+resume already there is moved to resume_archive/ (.docx and report only) first.
 
 Requires the Claude Code CLI to be installed and logged in (`claude /login`).
 
 Usage:
-    python generate_resume.py
+    python generate_resume.py [--job PATH] [--model M] [--effort E] [--no-pdf] [--dry-run]
 """
 
+import argparse
 import json
 import os
 import re
@@ -30,9 +31,11 @@ from pathlib import Path
 import docx
 from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
+from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Inches, Pt, RGBColor
+import yaml
 from dotenv import load_dotenv
 
 INK = RGBColor(0x1F, 0x2A, 0x44)
@@ -44,18 +47,50 @@ INPUT_DIR = ROOT / "resume_input"
 CREATE_DIR = ROOT / "resume_create"
 ARCHIVE_DIR = ROOT / "resume_archive"
 
+# Load .env before reading any setting from the environment (build_fact_bank.py
+# imports this module, so it picks these up too).
+load_dotenv(ROOT / ".env")
+
 MODEL = os.environ.get("CLAUDE_MODEL", "sonnet")
 EFFORT = os.environ.get("CLAUDE_EFFORT", "medium")
+CLAUDE_TIMEOUT = int(os.environ.get("CLAUDE_TIMEOUT", "600"))  # seconds per CLI call
+
+# Every advisory warning raised during a run, collected for the report.
+WARNINGS: list = []
+
+
+def warn(msg: str) -> None:
+    print(f"  Warning: {msg}")
+    WARNINGS.append(msg)
 
 # The tailoring rules/methodology live in an agent-native Claude Code skill
 # (.claude/skills/resume-tailoring/SKILL.md) rather than in a Python string, so
 # there's one source of truth shared by this pipeline and any interactive
 # `/resume-tailoring` use. load_tailoring_rules() reads that file's body.
 TAILORING_SKILL_PATH = ROOT / ".claude" / "skills" / "resume-tailoring" / "SKILL.md"
+COVER_LETTER_SKILL_PATH = ROOT / ".claude" / "skills" / "cover-letter" / "SKILL.md"
+
+# Hard "never claim" list (claim tier T4 in the skill): one regex per line.
+DO_NOT_CLAIM_PATH = ROOT / "do_not_claim.txt"
+
+# Hand-maintained bank of atomic, employer-tagged facts (drafted by
+# build_fact_bank.py). When present, every bullet must cite fact ids from it.
+FACT_BANK_PATH = INPUT_DIR / "fact_bank.yaml"
+
+
+def open_docx(path: Path) -> docx.Document:
+    # python-docx reports a file Word has open and locked as "Package not
+    # found", which hides the real (and easily fixed) cause.
+    try:
+        with open(path, "rb"):
+            pass
+    except PermissionError:
+        sys.exit(f"{path.name} is locked, most likely open in Word. Close it and re-run.")
+    return docx.Document(str(path))
 
 
 def read_docx_text(path: Path) -> str:
-    d = docx.Document(str(path))
+    d = open_docx(path)
     lines = [p.text for p in d.paragraphs if p.text.strip()]
     for table in d.tables:
         for row in table.rows:
@@ -65,13 +100,38 @@ def read_docx_text(path: Path) -> str:
     return "\n".join(lines)
 
 
-def find_latest(prefix: str) -> Path:
-    matches = sorted(INPUT_DIR.glob(f"{prefix}*.docx"))
+JOB_POSTING_EXTS = (".docx", ".pdf", ".txt", ".md")
+
+
+def read_input_text(path: Path) -> str:
+    """Plain text of an input whose structure isn't parsed (the job posting),
+    so it can be saved however is convenient: .docx, .pdf, .txt, or .md."""
+    suffix = path.suffix.lower()
+    if suffix == ".docx":
+        return read_docx_text(path)
+    if suffix == ".pdf":
+        from pypdf import PdfReader
+
+        return "\n".join((page.extract_text() or "") for page in PdfReader(str(path)).pages).strip()
+    return path.read_text(encoding="utf-8", errors="replace").strip()
+
+
+def count_pdf_pages(path: Path) -> int:
+    from pypdf import PdfReader
+
+    return len(PdfReader(str(path)).pages)
+
+
+def find_latest(prefix: str, exts: tuple = (".docx",)) -> Path:
+    """Newest matching file by modification time (not name, which would pick
+    an alphabetically-last posting over the one just dropped in)."""
+    candidates = [p for p in INPUT_DIR.glob(f"{prefix}*") if p.suffix.lower() in exts]
+    matches = sorted(candidates, key=lambda p: p.stat().st_mtime)
     if not matches:
         sys.exit(
-            f"No file starting with '{prefix}' found in {INPUT_DIR}. "
-            f"Expected a profile, prior resume, and job posting (in_profile*, "
-            f"in_resume*, in_job*)."
+            f"No {'/'.join(exts)} file starting with '{prefix}' found in {INPUT_DIR}. "
+            f"Expected a profile and prior resume (in_profile*.docx, in_resume*.docx) and a "
+            f"job posting (in_job*: {', '.join(JOB_POSTING_EXTS)})."
         )
     return matches[-1]
 
@@ -87,27 +147,25 @@ PHONE_RE = re.compile(r"\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}")
 
 
 def parse_applicant_info(profile_path: Path) -> dict:
-    doc = docx.Document(str(profile_path))
+    doc = open_docx(profile_path)
     paras = [(p.style.name, p.text.strip()) for p in doc.paragraphs if p.text.strip()]
 
+    headings = ("applicant info", "contact", "contact info")
     lines = []
     in_section = False
     for style, text in paras:
         if not in_section:
-            if text.lower().rstrip(":") in ("applicant info", "contact", "contact info"):
+            if text.lower().rstrip(":") in headings:
                 in_section = True
             continue
-        if style == "Normal" and text.lower().rstrip(":") not in (
-            "applicant info",
-            "contact",
-            "contact info",
-        ):
+        if style == "Normal" and text.lower().rstrip(":") not in headings:
             break
         lines.append(text)
 
     email = next((line for line in lines if "@" in line), "")
     phone = next((line for line in lines if PHONE_RE.search(line)), "")
-    remaining = [line for line in lines if line != email and line != phone]
+    linkedin = next((line for line in lines if "linkedin.com" in line.lower()), "")
+    remaining = [line for line in lines if line not in (email, phone, linkedin)]
 
     first_name, last_name, location = "", "", ""
     if remaining:
@@ -129,6 +187,7 @@ def parse_applicant_info(profile_path: Path) -> dict:
         "email": email,
         "phone": phone,
         "location": location,
+        "linkedin": linkedin,
     }
 
 
@@ -165,7 +224,7 @@ def _parse_dated_entries(paras: list) -> list:
 
 
 def parse_prior_resume(resume_path: Path) -> dict:
-    doc = docx.Document(str(resume_path))
+    doc = open_docx(resume_path)
     paras = [(p.style.name, p.text) for p in doc.paragraphs if p.text.strip()]
 
     section_names = {"summary", "education", "experience", "skills", "projects", "awards"}
@@ -214,8 +273,8 @@ def parse_prior_resume(resume_path: Path) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# LLM call — a single pass that only produces the parts requiring judgment:
-# the tailored summary, per-employer bullets, and a tailored skills list.
+# LLM calls — a drafting call plus a JSON-transcription call, producing only
+# the parts requiring judgment: the summary, per-employer bullets, and skills.
 # ---------------------------------------------------------------------------
 
 # Pipeline-specific I/O contract appended to the skill's methodology at call
@@ -233,26 +292,40 @@ list. Present your result as clear, readable text (plain text or markdown, your 
 a later step handles final structuring). Employers to cover, in order:
 {company_block}"""
 
+# Appended to the contract only when a fact bank is supplied.
+CITATION_CONTRACT = """
 
-def load_tailoring_rules() -> str:
-    """Load the tailoring methodology from the resume-tailoring skill, stripping
-    the YAML frontmatter so only the instructional body is used as the system
-    prompt. The skill is the single source of truth for these rules."""
-    if not TAILORING_SKILL_PATH.exists():
+Citations: end every experience bullet with the ids of the FACT BANK entries it is \
+built from, in square brackets, e.g. "Led in-house marketing mix modeling, saving $300k \
+per year. [F012, F031]". Cite only facts whose employer is that bullet's employer, or \
+"general". Never cite an "unassigned" fact in a bullet. A later step validates and \
+removes the brackets, so they never appear in the final resume. Do not cite in the \
+summary or skills."""
+
+
+def load_skill(path: Path) -> str:
+    """Load a skill's instructional body, stripping the YAML frontmatter so it
+    can be used verbatim as a system prompt. Skills are the single source of
+    truth for judgment/writing rules."""
+    if not path.exists():
         sys.exit(
-            f"Tailoring skill not found at {TAILORING_SKILL_PATH}. This file holds the "
-            "resume-tailoring rules that drive generation; restore it before running."
+            f"Skill not found at {path}. It holds the rules that drive generation; "
+            "restore it before running."
         )
-    text = TAILORING_SKILL_PATH.read_text(encoding="utf-8")
+    text = path.read_text(encoding="utf-8")
     # Drop a leading "---\n ... \n---\n" YAML frontmatter block if present.
     text = re.sub(r"^﻿?---\n.*?\n---\n", "", text, count=1, flags=re.DOTALL)
     return text.strip()
 
+
+def load_tailoring_rules() -> str:
+    return load_skill(TAILORING_SKILL_PATH)
+
 FORMAT_JSON_EXAMPLE = """{
   "summary": "2-4 sentence tailored summary.",
   "bullets_by_company": {
-    "Company Name One": ["Bullet one.", "Bullet two."],
-    "Company Name Two": ["Bullet one."]
+    "Company Name One": ["Bullet one. [F001]", "Bullet two. [F004, F009]"],
+    "Company Name Two": ["Bullet one. [F012]"]
   },
   "skills": ["Skill One", "Skill Two"]
 }"""
@@ -262,7 +335,8 @@ function — you do not evaluate, fact-check, edit, or comment on the content, y
 reformat it. Transcribe the resume text you are given into exactly this JSON shape, \
 using exactly these field names copied literally and exactly these company names as \
 the "bullets_by_company" keys, wrapped in <RESUME_JSON> and </RESUME_JSON> tags, with \
-absolutely nothing else anywhere in your reply — no markdown, no commentary, no notes:
+absolutely nothing else anywhere in your reply — no markdown, no commentary, no notes. \
+If bullets end with bracketed ids like "[F001, F004]", copy them exactly as written:
 <RESUME_JSON>
 """ + FORMAT_JSON_EXAMPLE + """
 </RESUME_JSON>"""
@@ -290,7 +364,13 @@ def _clean_subprocess_env() -> dict:
     }
 
 
-def _invoke_claude(claude_bin: str, system_prompt: str, user_message: str) -> str:
+def _invoke_claude(
+    claude_bin: str,
+    system_prompt: str,
+    user_message: str,
+    model: str | None = None,
+    effort: str | None = None,
+) -> str:
     # Pass the system prompt via a file, not a CLI arg: the `claude` entry on
     # Windows is a .CMD shim run through cmd.exe, which caps the whole command
     # line at 8191 chars, so a long system prompt overflows it ("The command
@@ -311,9 +391,9 @@ def _invoke_claude(claude_bin: str, system_prompt: str, user_message: str) -> st
                 "--tools",
                 "",
                 "--model",
-                MODEL,
+                model or MODEL,
                 "--effort",
-                EFFORT,
+                effort or EFFORT,
                 "--system-prompt-file",
                 sp_path,
             ],
@@ -323,6 +403,12 @@ def _invoke_claude(claude_bin: str, system_prompt: str, user_message: str) -> st
             encoding="utf-8",
             env=_clean_subprocess_env(),
             cwd=tempfile.gettempdir(),  # avoid CLAUDE.md auto-discovery from this repo's cwd
+            timeout=CLAUDE_TIMEOUT,
+        )
+    except subprocess.TimeoutExpired:
+        sys.exit(
+            f"claude CLI did not respond within {CLAUDE_TIMEOUT}s. Re-run, or raise "
+            "CLAUDE_TIMEOUT in .env."
         )
     finally:
         os.unlink(sp_path)
@@ -526,11 +612,22 @@ def extract_skills_from_draft(draft: str) -> list:
     return items
 
 
-def tailor_content(profile_text: str, resume_text: str, job_text: str, jobs: list) -> dict:
+def tailor_content(
+    profile_text: str,
+    resume_text: str,
+    job_text: str,
+    jobs: list,
+    deny_patterns: list,
+    fact_bank: dict | None = None,
+    model: str | None = None,
+    effort: str | None = None,
+) -> dict:
     claude_bin = _find_claude_cli()
     companies = [job["company"] for job in jobs]
     company_block = "\n".join(companies)
     contract = PIPELINE_OUTPUT_CONTRACT.replace("{company_block}", company_block)
+    if fact_bank:
+        contract += CITATION_CONTRACT
     draft_system_prompt = load_tailoring_rules() + contract
 
     user_message = f"""PROFILE (source of truth for accomplishments, skills, and details):
@@ -541,15 +638,26 @@ PRIOR RESUME (source of truth for which bullets belong to which employer):
 
 JOB POSTING (tailor emphasis, ordering, and phrasing to this):
 {job_text}"""
+    if fact_bank:
+        user_message += f"""
+
+FACT BANK (authoritative, employer-tagged facts; build every bullet from these and cite their ids):
+{format_fact_bank(fact_bank)}"""
+    if deny_patterns:
+        prohibited = "\n".join(f"- {p.pattern}" for p in deny_patterns)
+        user_message += f"""
+
+PROHIBITED CLAIMS (tier T4; case-insensitive regular expressions, and any match rejects the resume):
+{prohibited}"""
 
     print("  Drafting tailored content...")
-    draft = _invoke_claude(claude_bin, draft_system_prompt, user_message)
+    draft = _invoke_claude(claude_bin, draft_system_prompt, user_message, model, effort)
 
     print("  Converting to structured data...")
     parsed = None
     raw = ""
     for attempt in range(3):
-        raw = _invoke_claude(claude_bin, FORMAT_SYSTEM_PROMPT, draft)
+        raw = _invoke_claude(claude_bin, FORMAT_SYSTEM_PROMPT, draft, model, effort)
         parsed = _try_parse_format_json(raw, companies)
         total_bullets = sum(len(b) for b in (parsed or {}).get("bullets_by_company", {}).values())
         if parsed and parsed["summary"] and total_bullets:
@@ -568,6 +676,7 @@ JOB POSTING (tailor emphasis, ordering, and phrasing to this):
     if draft_skills:
         parsed["skills"] = draft_skills
 
+    parsed["draft"] = draft
     return parsed
 
 
@@ -577,23 +686,28 @@ JOB POSTING (tailor emphasis, ordering, and phrasing to this):
 # ---------------------------------------------------------------------------
 
 YEARS_RE = re.compile(r"(\d+)\+?\s*years?\s+of\s+experience", re.IGNORECASE)
+# The summary phrases tenure more loosely than the source ("15+ years leading",
+# "over 12 years"), so match any "N years" there, not only "N years of experience".
+SUMMARY_YEARS_RE = re.compile(r"(\d+)\+?\s*years?\b", re.IGNORECASE)
 
 
 def fix_years_of_experience(summary: str, resume_text: str) -> str:
     source_match = YEARS_RE.search(resume_text)
-    generated_match = YEARS_RE.search(summary)
-    if not source_match or not generated_match:
+    if not source_match:
         return summary
     source_years = int(source_match.group(1))
-    generated_years = int(generated_match.group(1))
-    if generated_years > source_years + 2:
+
+    def correct(match: re.Match) -> str:
+        generated_years = int(match.group(1))
+        if generated_years <= source_years + 2:
+            return match.group(0)
         print(
-            f"  Correcting inflated experience claim: '{generated_years}+ years' -> "
-            f"'{source_years}+ years' (source resume states {source_years} years)"
+            f"  Correcting inflated experience claim: '{match.group(0)}' -> "
+            f"'{source_years}...' (source resume states {source_years} years)"
         )
-        start, end = generated_match.span(1)
-        summary = summary[:start] + str(source_years) + summary[end:]
-    return summary
+        return str(source_years) + match.group(0)[len(match.group(1)):]
+
+    return SUMMARY_YEARS_RE.sub(correct, summary)
 
 
 # Generic first words that shouldn't be treated as a company's identifying
@@ -629,8 +743,8 @@ def strip_cross_employer_mentions(bullets_by_company: dict) -> dict:
                 None,
             )
             if hit:
-                print(
-                    f"  Warning: dropped a bullet under {company} that mentioned "
+                warn(
+                    f"dropped a bullet under {company} that mentioned "
                     f"{hit} (cross-employer content is not allowed): {bullet[:80]}..."
                 )
                 continue
@@ -649,7 +763,7 @@ def warn_unsupported_numbers(text: str, label: str, source_text: str) -> None:
         if len(digits) < 2:
             continue  # skip single-digit numbers (e.g. "3 direct reports") — too noisy to check
         if digits not in source_digits:
-            print(f"  Warning: '{match}' in {label} was not found in the source documents — please verify.")
+            warn(f"'{match}' in {label} was not found in the source documents, please verify.")
 
 
 def warn_unverified_skills(skills: list, source_text: str) -> None:
@@ -657,7 +771,7 @@ def warn_unverified_skills(skills: list, source_text: str) -> None:
     for skill in skills:
         core = re.sub(r"\s*\([^)]*\)", "", skill).strip().lower()
         if core and core not in source_lower:
-            print(f"  Warning: skill '{skill}' wasn't found verbatim in the source documents — please verify.")
+            warn(f"skill '{skill}' wasn't found verbatim in the source documents, please verify.")
 
 
 ANALOGY_RE = re.compile(
@@ -670,10 +784,238 @@ def warn_analogy_phrasing(bullets_by_company: dict) -> None:
     for company, bullets in bullets_by_company.items():
         for bullet in bullets:
             if ANALOGY_RE.search(bullet):
-                print(
-                    f"  Warning: a bullet under {company} uses comparison phrasing that "
-                    f"may overclaim relevance to unfamiliar terms — please review: {bullet[:100]}..."
+                warn(
+                    f"a bullet under {company} uses comparison phrasing that "
+                    f"may overclaim relevance to unfamiliar terms, please review: {bullet[:100]}..."
                 )
+
+
+def load_deny_patterns() -> list:
+    """Compile the hard "never claim" list. Missing file means no deny list."""
+    if not DO_NOT_CLAIM_PATH.exists():
+        return []
+    patterns = []
+    for line in DO_NOT_CLAIM_PATH.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        try:
+            patterns.append(re.compile(line, re.IGNORECASE))
+        except re.error as exc:
+            sys.exit(f"Invalid regex in {DO_NOT_CLAIM_PATH.name}: {line!r} ({exc})")
+    return patterns
+
+
+def find_deny_violations(summary: str, bullets_by_company: dict, skills: list, patterns: list) -> list:
+    """Return (location, pattern, text) for every prohibited-claim match. Unlike
+    the warn_* checks, a hit here is a hard failure: these are T4 claims
+    (credentials, role identities, unsupported tools) that must never ship."""
+    sections = [("summary", summary)]
+    sections += [(f"bullet under {c}", b) for c, bs in bullets_by_company.items() for b in bs]
+    sections += [("skills", s) for s in skills]
+    return [
+        (where, p.pattern, text)
+        for where, text in sections
+        for p in patterns
+        if p.search(text)
+    ]
+
+
+def snap_employer(employer: str, companies: list) -> str | None:
+    """Map an employer label onto a parsed company name case/whitespace-
+    insensitively, or onto "general"/"unassigned". None if it matches nothing."""
+    norm = lambda s: re.sub(r"\s+", " ", str(s).strip().lower())
+    by_norm = {norm(c): c for c in companies}
+    by_norm.update({"general": "general", "unassigned": "unassigned"})
+    return by_norm.get(norm(employer))
+
+
+def load_fact_bank(companies: list, path: Path | None = None) -> dict | None:
+    """Load resume_input/fact_bank.yaml as {id: fact}. Returns None when absent,
+    in which case the pipeline runs without citation enforcement.
+
+    Employer labels are snapped to the parsed company names. A label matching
+    no employer (usually a typo, or a renamed company) would silently make
+    every such fact un-citable, so it is warned about and treated as
+    `unassigned`."""
+    path = path or FACT_BANK_PATH
+    if not path.exists():
+        return None
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    bank = {}
+    unknown = {}
+    for fact in data.get("facts") or []:
+        fid = str(fact.get("id", "")).strip().upper()
+        if not fid or not fact.get("text"):
+            continue
+        if fid in bank:
+            sys.exit(f"Duplicate fact id {fid} in {path.name}; ids must be unique.")
+        raw_employer = str(fact.get("employer", "unassigned")).strip()
+        employer = snap_employer(raw_employer, companies)
+        if employer is None:
+            unknown.setdefault(raw_employer, []).append(fid)
+            employer = "unassigned"
+        bank[fid] = {**fact, "id": fid, "employer": employer}
+    for raw_employer, fids in unknown.items():
+        warn(
+            f"{path.name}: employer {raw_employer!r} matches no employer in the prior resume "
+            f"({', '.join(companies)}); treating {', '.join(fids)} as unassigned (uncitable)."
+        )
+    unassigned = sum(1 for f in bank.values() if f["employer"] == "unassigned")
+    if unassigned:
+        warn(f"{path.name}: {unassigned} fact(s) are `unassigned` and can't back any bullet.")
+    return bank or None
+
+
+def format_fact_bank(bank: dict) -> str:
+    return "\n".join(f"{fid} [{f['employer']}] {f['text']}" for fid, f in bank.items())
+
+
+CITATION_RE = re.compile(r"\s*\[\s*(F\d+(?:\s*,\s*F\d+)*)\s*\]\s*\.?\s*$", re.IGNORECASE)
+
+
+def split_citation(bullet: str) -> tuple:
+    """Split 'Did X. [F001, F004]' into ('Did X.', ['F001', 'F004'])."""
+    match = CITATION_RE.search(bullet)
+    if not match:
+        return bullet.strip(), []
+    ids = [i.strip().upper() for i in match.group(1).split(",")]
+    text = bullet[: match.start()].rstrip()
+    if text and text[-1] not in ".!?":
+        text += "."
+    return text, ids
+
+
+def validate_citations(bullets_by_company: dict, bank: dict) -> tuple:
+    """Strip citation brackets from every bullet and enforce provenance.
+
+    Dropped (hard evidence of fabrication or transplant): a bullet citing an
+    unknown id, an `unassigned` fact, or another employer's fact.
+    Warned (kept for manual review): a bullet with no citation at all, and a
+    number in the bullet that doesn't appear in any fact it cites.
+
+    Returns (clean bullets_by_company, citations_by_company) where the second
+    maps each company to a list of id-lists parallel to its kept bullets."""
+    cleaned, citations = {}, {}
+    for company, bullets in bullets_by_company.items():
+        kept, kept_ids = [], []
+        for bullet in bullets:
+            text, ids = split_citation(bullet)
+            problem = None
+            for fid in ids:
+                fact = bank.get(fid)
+                if fact is None:
+                    problem = f"cites unknown fact {fid}"
+                elif fact["employer"] == "unassigned":
+                    problem = f"cites {fid}, which is `unassigned` in the fact bank"
+                elif fact["employer"] not in (company, "general"):
+                    problem = f"cites {fid}, a fact from {fact['employer']}"
+                if problem:
+                    break
+            if problem:
+                warn(f"dropped a bullet under {company} that {problem}: {text[:80]}...")
+                continue
+            if not ids:
+                warn(f"uncited bullet under {company}, please verify: {text[:80]}...")
+            else:
+                cited_text = " ".join(
+                    bank[fid]["text"] + " " + " ".join(map(str, bank[fid].get("metrics") or []))
+                    for fid in ids
+                )
+                warn_unsupported_numbers(text, f"a bullet under {company} (vs. its cited facts)", cited_text)
+            kept.append(text)
+            kept_ids.append(ids)
+        cleaned[company] = kept
+        citations[company] = kept_ids
+    return cleaned, citations
+
+
+INLINE_CITATION_RE = re.compile(r"\s*\[\s*(F\d+(?:\s*,\s*F\d+)*)\s*\]", re.IGNORECASE)
+
+
+def extract_citations(text: str) -> tuple:
+    """Remove every '[F001, F004]' group anywhere in text (a paragraph may cite
+    mid-sentence, unlike a bullet); return (clean text, ids in order)."""
+    ids = []
+    for group in INLINE_CITATION_RE.findall(text):
+        for fid in group.split(","):
+            fid = fid.strip().upper()
+            if fid not in ids:
+                ids.append(fid)
+    clean = INLINE_CITATION_RE.sub("", text)
+    clean = re.sub(r"\s+([.,;:!?])", r"\1", clean)
+    return re.sub(r"\s{2,}", " ", clean).strip(), ids
+
+
+def draft_cover_letter(
+    summary: str,
+    bullets_by_company: dict,
+    job_text: str,
+    fact_bank: dict | None,
+    deny_patterns: list,
+    model: str | None = None,
+    effort: str | None = None,
+) -> list:
+    """One extra CLI call, driven by the cover-letter skill, built only from the
+    already-validated resume content (plus the fact bank). Returns the raw
+    paragraphs, citations still attached."""
+    bullets = "\n".join(
+        f"{company}:\n" + "\n".join(f"- {b}" for b in bs) for company, bs in bullets_by_company.items()
+    )
+    user_message = f"""SUMMARY:
+{summary}
+
+BULLETS (final, validated resume content):
+{bullets}
+
+JOB POSTING:
+{job_text}"""
+    if fact_bank:
+        user_message += f"\n\nFACT BANK (cite these ids):\n{format_fact_bank(fact_bank)}"
+    if deny_patterns:
+        prohibited = "\n".join(f"- {p.pattern}" for p in deny_patterns)
+        user_message += f"\n\nPROHIBITED CLAIMS (case-insensitive regular expressions):\n{prohibited}"
+
+    claude_bin = _find_claude_cli()
+    system_prompt = load_skill(COVER_LETTER_SKILL_PATH)
+    raw = ""
+    for attempt in range(3):
+        raw = _invoke_claude(claude_bin, system_prompt, user_message, model, effort)
+        match = re.search(r"<COVER_LETTER>(.*?)</COVER_LETTER>", raw, re.DOTALL)
+        body = _strip_code_fence(match.group(1) if match else raw)
+        paragraphs = [p.strip() for p in re.split(r"\n\s*\n", body) if p.strip()]
+        if 2 <= len(paragraphs) <= 6:
+            return paragraphs
+        print(f"  Cover letter attempt {attempt + 1} was not usable, retrying...")
+    sys.exit(f"Could not get a usable cover letter after 3 attempts. Last raw response:\n{raw}")
+
+
+def validate_cover_letter(paragraphs: list, bank: dict | None, source_text: str) -> list:
+    """Strip citations and apply the same provenance rules as bullets. Returns
+    [(clean paragraph, ids)]. A paragraph citing an unknown or `unassigned`
+    fact is dropped (hard evidence of fabrication); uncited paragraphs (other
+    than the closing one) and numbers missing from the cited facts are warned
+    about."""
+    result = []
+    for i, paragraph in enumerate(paragraphs, 1):
+        text, ids = extract_citations(paragraph)
+        text = remove_em_dashes(text)
+        label = f"cover letter paragraph {i}"
+        if bank:
+            bad = [fid for fid in ids if fid not in bank or bank[fid]["employer"] == "unassigned"]
+            if bad:
+                warn(f"dropped {label}, which cites unknown/unassigned fact(s) {', '.join(bad)}: {text[:80]}...")
+                continue
+            if ids:
+                cited = " ".join(
+                    bank[f]["text"] + " " + " ".join(map(str, bank[f].get("metrics") or [])) for f in ids
+                )
+                warn_unsupported_numbers(text, f"{label} (vs. its cited facts)", cited)
+            elif i < len(paragraphs):  # the closing paragraph carries no claims
+                warn(f"uncited {label}, please verify: {text[:80]}...")
+        warn_unsupported_numbers(text, label, source_text)
+        result.append((text, ids))
+    return result
 
 
 def remove_em_dashes(text: str) -> str:
@@ -681,6 +1023,9 @@ def remove_em_dashes(text: str) -> str:
     guaranteed, so replace any that slip through with a comma (safe for the
     fragment-style clauses resume bullets/summaries use)."""
     text = re.sub(r"\s*—\s*", ", ", text)
+    # A spaced en dash (" – ") is the same tell; an unspaced one ("2019–2021")
+    # is a range and stays.
+    text = re.sub(r"\s+–\s+", ", ", text)
     return re.sub(r",\s*,", ",", text)
 
 
@@ -694,7 +1039,7 @@ def parse_profile_skills(profile_path: Path) -> dict:
     headers) — used as a truthful pool to backfill anything the model omits.
     Kept separate: tool names are unambiguous and safe to always list in full;
     the broader skills phrases benefit more from job-specific filtering."""
-    doc = docx.Document(str(profile_path))
+    doc = open_docx(profile_path)
     paras = [(p.style.name, p.text.strip()) for p in doc.paragraphs if p.text.strip()]
 
     tool_section_names = {"software/tools", "software / tools", "tools"}
@@ -739,8 +1084,107 @@ def merge_and_sort_skills(tailored_skills: list, profile_skills: dict, job_text:
     return sorted(seen.values(), key=str.lower)
 
 
+def _contains_term(term: str, text_lower: str) -> bool:
+    return re.search(rf"(?<!\w){re.escape(term)}(?!\w)", text_lower) is not None
+
+
+def keyword_coverage(
+    job_text: str, output_text: str, profile_skills: dict, fact_bank: dict | None
+) -> tuple:
+    """Which posting terms the candidate genuinely has actually made it into the
+    resume. The vocabulary is only the candidate's own terms (profile
+    tools/skills plus fact-bank tags), so every "missing" term is a truthful
+    gap to consider, never an invitation to claim something new.
+
+    Returns (covered, missing): terms named in the posting that do / don't
+    appear in the output text."""
+    vocab = {}
+    candidates = profile_skills["tools"] + profile_skills["skills"]
+    for fact in (fact_bank or {}).values():
+        candidates += [str(t) for t in fact.get("tags") or []]
+    for term in candidates:
+        key = _skill_key(term)
+        if len(key) >= 2 and key not in vocab:
+            vocab[key] = term.strip()
+
+    job_lower, out_lower = job_text.lower(), output_text.lower()
+    covered, missing = [], []
+    for key, term in sorted(vocab.items()):
+        if not _contains_term(key, job_lower):
+            continue
+        (covered if _contains_term(key, out_lower) else missing).append(term)
+    return covered, missing
+
+
+def write_report(
+    path: Path,
+    inputs: dict,
+    model: str,
+    effort: str,
+    warnings: list,
+    coverage: tuple,
+    bullets_by_company: dict,
+    citations: dict | None,
+    fact_bank: dict | None,
+    draft: str,
+    cover_letter: list | None = None,
+    page_count: int | None = None,
+) -> None:
+    """Markdown audit trail for one run: what went in, every advisory warning,
+    keyword coverage, each final bullet with the facts it cites, and the raw
+    draft. Meant to be read before the resume is sent. `citations` maps
+    (company, final bullet text) -> cited fact ids."""
+    covered, missing = coverage
+    lines = [
+        f"# Tailoring report ({datetime.now().strftime('%Y-%m-%d %H:%M:%S')})",
+        "",
+        f"- Model: {model} (effort={effort})",
+        *(f"- {label}: `{name}`" for label, name in inputs.items()),
+        *([f"- Resume length: {page_count} page(s)"] if page_count else []),
+        "",
+        f"## Warnings ({len(warnings)})",
+        "",
+        *([f"- {w}" for w in warnings] or ["None."]),
+        "",
+        f"## Keyword coverage ({len(covered)}/{len(covered) + len(missing)})",
+        "",
+        "Posting terms the candidate genuinely has (from the profile's skills/tools "
+        "and the fact bank's tags).",
+        "",
+        f"- Covered: {', '.join(covered) or 'none'}",
+        f"- Missing: {', '.join(missing) or 'none'}",
+        "",
+        "## Bullets and provenance",
+        "",
+    ]
+    for company, bullets in bullets_by_company.items():
+        lines += [f"### {company}", ""]
+        for bullet in bullets:
+            ids = (citations or {}).get((company, bullet), [])
+            lines.append(f"- {bullet}")
+            for fid in ids:
+                fact = (fact_bank or {}).get(fid)
+                if fact:
+                    lines.append(f"  - `{fid}` {fact['text']}")
+            if fact_bank and not ids:
+                lines.append("  - (uncited)")
+        lines.append("")
+    if cover_letter:
+        lines += ["## Cover letter", ""]
+        for text, ids in cover_letter:
+            lines += [text, ""]
+            for fid in ids:
+                fact = (fact_bank or {}).get(fid)
+                if fact:
+                    lines.append(f"- `{fid}` {fact['text']}")
+            lines.append("")
+    lines += ["## Raw draft", "", "```", draft.strip(), "```", ""]
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
 # ---------------------------------------------------------------------------
-# Assembly + docx/pdf output (unchanged from prior version).
+# Assembly + docx/pdf output.
 # ---------------------------------------------------------------------------
 
 
@@ -763,6 +1207,22 @@ def _set_bottom_border(paragraph, color: str = RULE_COLOR, size: int = 6) -> Non
     bottom.set(qn("w:color"), color)
     pBdr.append(bottom)
     pPr.append(pBdr)
+
+
+def _add_hyperlink(paragraph, text: str, url: str) -> None:
+    """Append a clickable external link (python-docx has no API for this).
+    Styled like the surrounding contact text so it doesn't read as blue link
+    text; ATS parsers and PDF viewers still pick up the target."""
+    r_id = paragraph.part.relate_to(url, RELATIONSHIP_TYPE.HYPERLINK, is_external=True)
+    link = OxmlElement("w:hyperlink")
+    link.set(qn("r:id"), r_id)
+    run = OxmlElement("w:r")
+    run_text = OxmlElement("w:t")
+    run_text.text = text
+    run_text.set(qn("xml:space"), "preserve")
+    run.append(run_text)
+    link.append(run)
+    paragraph._p.append(link)
 
 
 def _build_styles(d: docx.Document) -> dict:
@@ -832,7 +1292,9 @@ def _add_entry_header(d: docx.Document, left_text: str, right_text: str):
     return p
 
 
-def build_docx(data: dict, out_path: Path) -> None:
+def _new_document(data: dict) -> tuple:
+    """Letter-size document with the shared styles and the name/contact
+    header, used by both the resume and the cover letter."""
     d = docx.Document()
 
     section = d.sections[0]
@@ -846,12 +1308,42 @@ def build_docx(data: dict, out_path: Path) -> None:
     styles = _build_styles(d)
 
     d.add_paragraph(f"{data['first_name']} {data['last_name']}", style="ResumeName")
-    d.add_paragraph(
-        " | ".join(
-            part for part in (data["email"], data["phone"], data["location"]) if part
-        ),
-        style="ResumeContact",
-    )
+    contact_p = d.add_paragraph(style="ResumeContact")
+    linkedin = data.get("linkedin", "")
+    parts = [
+        (data["email"], f"mailto:{data['email']}" if data["email"] else None),
+        (data["phone"], None),
+        (data["location"], None),
+        (linkedin, linkedin if linkedin.lower().startswith("http") else f"https://{linkedin}"),
+    ]
+    first = True
+    for text, url in parts:
+        if not text:
+            continue
+        if not first:
+            contact_p.add_run(" | ")
+        first = False
+        if url:
+            _add_hyperlink(contact_p, text, url)
+        else:
+            contact_p.add_run(text)
+    return d, styles
+
+
+def build_cover_letter_docx(data: dict, paragraphs: list, out_path: Path) -> None:
+    d, _styles = _new_document(data)
+    d.add_paragraph(datetime.now().strftime("%B %d, %Y").replace(" 0", " "))
+    d.add_paragraph("Dear Hiring Team,")
+    for text in paragraphs:
+        d.add_paragraph(text).paragraph_format.space_after = Pt(8)
+    d.add_paragraph("Sincerely,")
+    d.add_paragraph(f"{data['first_name']} {data['last_name']}")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    d.save(str(out_path))
+
+
+def build_docx(data: dict, out_path: Path) -> None:
+    d, styles = _new_document(data)
 
     def add_heading(text: str) -> None:
         p = d.add_paragraph(text, style=styles["section"])
@@ -898,27 +1390,68 @@ def convert_to_pdf(docx_path: Path, pdf_path: Path) -> None:
     convert(str(docx_path), str(pdf_path))
 
 
+OUTPUT_PREFIXES = ("out_resume_", "out_cover_letter_")
+
+
 def archive_existing_outputs() -> None:
     ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
     CREATE_DIR.mkdir(parents=True, exist_ok=True)
 
     archive_time = datetime.now().strftime("%H-%M-%S")
-    for docx_file in CREATE_DIR.glob("out_resume_*.docx"):
-        archived_name = f"{docx_file.stem}-{archive_time}{docx_file.suffix}"
-        shutil.move(str(docx_file), str(ARCHIVE_DIR / archived_name))
-        print(f"Archived {docx_file.name} -> resume_archive/{archived_name}")
+    for prefix in OUTPUT_PREFIXES:
+        for docx_file in CREATE_DIR.glob(f"{prefix}*.docx"):
+            archived_name = f"{docx_file.stem}-{archive_time}{docx_file.suffix}"
+            shutil.move(str(docx_file), str(ARCHIVE_DIR / archived_name))
+            print(f"Archived {docx_file.name} -> resume_archive/{archived_name}")
 
-    for pdf_file in CREATE_DIR.glob("out_resume_*.pdf"):
-        pdf_file.unlink()
-        print(f"Removed superseded {pdf_file.name} (only .docx versions are archived)")
+        for report_file in CREATE_DIR.glob(f"{prefix}*_report.md"):
+            base = report_file.name[: -len("_report.md")]
+            archived_name = f"{base}-{archive_time}_report.md"
+            shutil.move(str(report_file), str(ARCHIVE_DIR / archived_name))
+            print(f"Archived {report_file.name} -> resume_archive/{archived_name}")
+
+        for pdf_file in CREATE_DIR.glob(f"{prefix}*.pdf"):
+            pdf_file.unlink()
+            print(f"Removed superseded {pdf_file.name} (only .docx versions are archived)")
 
 
-def main() -> None:
-    load_dotenv(ROOT / ".env")
+def parse_args(argv=None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Generate a resume tailored to one job posting.")
+    parser.add_argument(
+        "--job",
+        type=Path,
+        help="job posting .docx/.pdf/.txt/.md (default: newest resume_input/in_job*)",
+    )
+    parser.add_argument(
+        "--cover-letter",
+        action="store_true",
+        help="also write a cover letter built from the validated resume content",
+    )
+    parser.add_argument(
+        "--archive-job",
+        action="store_true",
+        help="after a successful run, move the job posting into resume_archive/",
+    )
+    parser.add_argument("--model", default=MODEL, help=f"Claude model (default: {MODEL})")
+    parser.add_argument("--effort", default=EFFORT, help=f"reasoning effort (default: {EFFORT})")
+    parser.add_argument("--no-pdf", action="store_true", help="skip the Word-based PDF export")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="run generation and validation, print the result and a report, but archive/write nothing",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None) -> None:
+    args = parse_args(argv)
+    WARNINGS.clear()
 
     profile_path = find_latest("in_profile")
     resume_path = find_latest("in_resume")
-    job_path = find_latest("in_job")
+    job_path = args.job or find_latest("in_job", JOB_POSTING_EXTS)
+    if not job_path.exists():
+        sys.exit(f"Job posting not found: {job_path}")
 
     print(f"Profile: {profile_path.name}")
     print(f"Prior resume: {resume_path.name}")
@@ -926,17 +1459,52 @@ def main() -> None:
 
     contact = parse_applicant_info(profile_path)
     parsed_resume = parse_prior_resume(resume_path)
+    companies = [job["company"] for job in parsed_resume["jobs"]]
 
     profile_text = read_docx_text(profile_path)
     resume_text = read_docx_text(resume_path)
-    job_text = read_docx_text(job_path)
+    job_text = read_input_text(job_path)
+    if not job_text:
+        sys.exit(f"No text could be read from {job_path.name} (a scanned PDF?). Save it as .txt instead.")
 
-    print(f"Tailoring content with {MODEL} (effort={EFFORT})...")
-    tailored = tailor_content(profile_text, resume_text, job_text, parsed_resume["jobs"])
+    deny_patterns = load_deny_patterns()
+    fact_bank = load_fact_bank(companies)
+    if fact_bank:
+        print(f"Fact bank: {len(fact_bank)} facts (citations enforced)")
+    else:
+        print(
+            f"Fact bank: none at {FACT_BANK_PATH.relative_to(ROOT)}; bullets won't be "
+            "provenance-checked. Run `python build_fact_bank.py` to create one."
+        )
+
+    print(f"Tailoring content with {args.model} (effort={args.effort})...")
+    tailored = tailor_content(
+        profile_text,
+        resume_text,
+        job_text,
+        parsed_resume["jobs"],
+        deny_patterns,
+        fact_bank,
+        model=args.model,
+        effort=args.effort,
+    )
 
     summary = fix_years_of_experience(tailored["summary"], resume_text)
     summary = remove_em_dashes(summary)
-    bullets_by_company = strip_cross_employer_mentions(tailored["bullets_by_company"])
+    bullets_by_company = tailored["bullets_by_company"]
+    citations = {}
+    if fact_bank:
+        bullets_by_company, cited = validate_citations(bullets_by_company, fact_bank)
+        # Key by final (em-dash-cleaned) text: later steps only drop bullets,
+        # so this stays correct where position-based lists would not.
+        citations = {
+            (c, remove_em_dashes(b)): ids
+            for c, bs in bullets_by_company.items()
+            for b, ids in zip(bs, cited[c])
+        }
+    else:
+        bullets_by_company = {c: [split_citation(b)[0] for b in bs] for c, bs in bullets_by_company.items()}
+    bullets_by_company = strip_cross_employer_mentions(bullets_by_company)
     bullets_by_company = {c: [remove_em_dashes(b) for b in bs] for c, bs in bullets_by_company.items()}
     warn_analogy_phrasing(bullets_by_company)
 
@@ -950,16 +1518,67 @@ def main() -> None:
             warn_unsupported_numbers(bullet, f"a bullet under {company}", source_text)
     warn_unverified_skills(skills, source_text)
 
-    experience = [
-        {
-            "company": job["company"],
-            "location": job["location"],
-            "dates": job["dates"],
-            "title": job["title"],
-            "bullets": bullets_by_company.get(job["company"]) or job["source_bullets"],
-        }
-        for job in parsed_resume["jobs"]
-    ]
+    violations = find_deny_violations(summary, bullets_by_company, skills, deny_patterns)
+    if violations:
+        for where, pattern, text in violations:
+            print(f"  PROHIBITED CLAIM in {where} (matched {pattern!r}): {text[:120]}")
+        sys.exit(
+            f"Refusing to write the resume: {len(violations)} prohibited claim(s) from "
+            f"{DO_NOT_CLAIM_PATH.name}. Nothing was archived or overwritten; re-run to regenerate."
+        )
+
+    experience = []
+    for job in parsed_resume["jobs"]:
+        bullets = bullets_by_company.get(job["company"])
+        if not bullets:
+            warn(
+                f"no tailored bullets survived for {job['company']}; using the prior "
+                "resume's bullets for it unchanged."
+            )
+            bullets = job["source_bullets"]
+            bullets_by_company[job["company"]] = bullets
+        experience.append(
+            {
+                "company": job["company"],
+                "location": job["location"],
+                "dates": job["dates"],
+                "title": job["title"],
+                "bullets": bullets,
+            }
+        )
+
+    output_text = "\n".join([summary, *(b for bs in bullets_by_company.values() for b in bs), *skills])
+    coverage = keyword_coverage(job_text, output_text, profile_skills, fact_bank)
+    covered, missing = coverage
+    print(
+        f"Keyword coverage: {len(covered)}/{len(covered) + len(missing)} posting terms you "
+        "have appear in the resume."
+    )
+    if missing:
+        print(f"  Not used: {', '.join(missing)}")
+
+    cover_letter = None
+    if args.cover_letter:
+        print("Drafting cover letter...")
+        cover_letter = validate_cover_letter(
+            draft_cover_letter(
+                summary, bullets_by_company, job_text, fact_bank, deny_patterns, args.model, args.effort
+            ),
+            fact_bank,
+            source_text,
+        )
+        if not cover_letter:
+            sys.exit("Every cover letter paragraph failed validation. Nothing was archived; re-run.")
+        cl_violations = find_deny_violations(
+            "\n".join(text for text, _ in cover_letter), {}, [], deny_patterns
+        )
+        if cl_violations:
+            for _, pattern, text in cl_violations:
+                print(f"  PROHIBITED CLAIM in the cover letter (matched {pattern!r}): {text[:120]}")
+            sys.exit(
+                f"Refusing to write: the cover letter has {len(cl_violations)} prohibited claim(s) "
+                f"from {DO_NOT_CLAIM_PATH.name}. Nothing was archived or overwritten; re-run."
+            )
 
     data = {
         **contact,
@@ -969,21 +1588,72 @@ def main() -> None:
         "skills": skills,
     }
 
-    archive_existing_outputs()
-
     today = datetime.now().strftime("%Y-%m-%d")
-    base_name = f"out_resume_{slugify_name(data['first_name'], data['last_name'])}_{today}"
-    docx_path = CREATE_DIR / f"{base_name}.docx"
-    pdf_path = CREATE_DIR / f"{base_name}.pdf"
+    slug = slugify_name(data["first_name"], data["last_name"])
+    base_name = f"out_resume_{slug}_{today}"
+    cl_base_name = f"out_cover_letter_{slug}_{today}"
+    out_dir = Path(tempfile.gettempdir()) if args.dry_run else CREATE_DIR
+    report_path = out_dir / f"{base_name}_report.md"
+    page_count = None
 
-    build_docx(data, docx_path)
-    print(f"Wrote {docx_path.relative_to(ROOT)}")
+    if args.dry_run:
+        print("\n--- DRY RUN: nothing archived or written to resume_create/ ---\n")
+        print(f"SUMMARY\n{summary}\n")
+        for job in experience:
+            print(job["company"])
+            for bullet in job["bullets"]:
+                print(f"  - {bullet}")
+        print(f"\nSKILLS\n{', '.join(skills)}\n")
+        if cover_letter:
+            print("COVER LETTER\n" + "\n\n".join(text for text, _ in cover_letter) + "\n")
+    else:
+        archive_existing_outputs()
+        outputs = [(base_name, lambda path: build_docx(data, path))]
+        if cover_letter:
+            paragraphs = [text for text, _ in cover_letter]
+            outputs.append((cl_base_name, lambda path: build_cover_letter_docx(data, paragraphs, path)))
+        for name, build in outputs:
+            docx_path = CREATE_DIR / f"{name}.docx"
+            pdf_path = CREATE_DIR / f"{name}.pdf"
+            build(docx_path)
+            print(f"Wrote {docx_path.relative_to(ROOT)}")
+            if args.no_pdf:
+                continue
+            try:
+                convert_to_pdf(docx_path, pdf_path)
+                print(f"Wrote {pdf_path.relative_to(ROOT)}")
+            except Exception as exc:  # docx2pdf requires MS Word via COM automation
+                warn(f"could not generate {pdf_path.name} ({exc}). The .docx was still created.")
+                continue
+            pages = count_pdf_pages(pdf_path)
+            if name == base_name:
+                page_count = pages
+                print(f"Resume length: {pages} page(s)")
+                if pages > 2:
+                    warn(f"the resume runs {pages} pages; consider cutting the weakest bullets.")
+            elif pages > 1:
+                warn(f"the cover letter runs {pages} pages; it should fit on one.")
 
-    try:
-        convert_to_pdf(docx_path, pdf_path)
-        print(f"Wrote {pdf_path.relative_to(ROOT)}")
-    except Exception as exc:  # docx2pdf requires MS Word via COM automation
-        print(f"Warning: could not generate PDF ({exc}). The .docx was still created.")
+        if args.archive_job:
+            ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
+            shutil.move(str(job_path), str(ARCHIVE_DIR / job_path.name))
+            print(f"Archived job posting {job_path.name} -> resume_archive/")
+
+    write_report(
+        report_path,
+        {"Profile": profile_path.name, "Prior resume": resume_path.name, "Job posting": job_path.name},
+        args.model,
+        args.effort,
+        WARNINGS,
+        coverage,
+        bullets_by_company,
+        citations,
+        fact_bank,
+        tailored["draft"],
+        cover_letter=cover_letter,
+        page_count=page_count,
+    )
+    print(f"{len(WARNINGS)} warning(s); see {report_path}")
 
 
 if __name__ == "__main__":

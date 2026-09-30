@@ -2,3 +2,11 @@
 __pycache__/
 *.pyc
 .claude/settings.local.json
+
+# Personal career data: never commit. Folders are kept via .gitkeep.
+resume_input/*
+!resume_input/.gitkeep
+resume_create/*
+!resume_create/.gitkeep
+resume_archive/*
+!resume_archive/.gitkeep

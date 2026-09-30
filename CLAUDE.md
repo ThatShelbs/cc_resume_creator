@@ -24,11 +24,17 @@ The intended workflow: read all files from `resume_input/`, generate a tailored 
 	- `in_job` is the posting for the current role we want to design a new resume for. 
 
 
-- `resume_create/` — when we create a new output resume we save it as `out_resume_fname-lname_yyyy-mm-dd`. We should make a copy as word .docx and a second copy as pdf in create folder.
-- `resume_archive/` — when we create a new output resume we save the existing one here `out_resume_fname-lname_yyyy-mm-dd-hh-mm-ss` we will only save the .docx versions.
+- `resume_create/` — when we create a new output resume we save it as `out_resume_fname-lname_yyyy-mm-dd`. We should make a copy as word .docx and a second copy as pdf in create folder, plus an `out_resume_fname-lname_yyyy-mm-dd_report.md` tailoring report (inputs, every warning, keyword coverage, each bullet with its cited facts, raw draft).
+- `resume_archive/` — when we create a new output resume we save the existing one here `out_resume_fname-lname_yyyy-mm-dd-hh-mm-ss` we will only save the .docx versions (and the matching `_report.md`).
+- `resume_input/`, `resume_create/`, `resume_archive/` are git-ignored (only `.gitkeep` is tracked): they hold personal career data and must never be committed.
+- `examples/` — `make_examples.py` builds anonymized sample inputs (profile, prior resume, `.txt` posting, `fact_bank.example.yaml`) in exactly the layout the parser expects; `tests/` checks they parse.
+- `.claude/skills/cover-letter/SKILL.md` — rules for `--cover-letter`, loaded verbatim (frontmatter stripped by `load_skill()`) as that call's system prompt. The letter is built only from the final validated summary/bullets plus the fact bank; `validate_cover_letter()` drops paragraphs citing unknown/`unassigned` facts, warns on uncited ones (except the closing paragraph) and unsupported numbers, and the never-claim list aborts the run just as for the resume. Output: `out_cover_letter_fname-lname_yyyy-mm-dd.docx/.pdf`, archived like the resume.
+- `tests/` — pytest suite for the deterministic code (parsing, citation/deny/skill guards, keyword coverage, docx round trip). No LLM calls. Run `python -m pytest -q` after `pip install -r requirements-dev.txt`.
 - `LICENSE` — MIT, copyright Shelby Temple.
 - `generate_resume.py` — the orchestration script (deterministic parsing, LLM call, validation guards, docx/pdf output). It contains no tailoring rules of its own; it loads them from the skill below.
 - `.claude/skills/resume-tailoring/SKILL.md` — the agent-native home for the tailoring methodology and rules. Single source of truth, used both by the pipeline and by an interactive `/resume-tailoring` invocation. See the "Skills" section below.
+- `resume_input/fact_bank.yaml` — hand-maintained bank of atomic, employer-tagged true facts (id, employer or `general`/`unassigned`, kind, text, metrics, tags). Drafted once by `build_fact_bank.py` (one `claude -p` call; ids and metric checks are assigned deterministically in Python; refuses to overwrite an existing bank without `--force`), then edited by hand. When present, the tailoring call must end every bullet with `[F###, ...]` citations; `validate_citations()` strips them and drops any bullet citing an unknown id, an `unassigned` fact, or another employer's fact, and warns on uncited bullets and on numbers not found in the cited facts. Without a bank the pipeline runs as before, minus provenance checks.
+- `do_not_claim.txt` — hard "never claim" list (claim tier T4 in the skill), one case-insensitive regex per line. Passed to the tailoring call as prohibited, then enforced deterministically: any match in the generated summary, bullets, or skills aborts the run before anything is archived or written. Use phrases rather than bare words (the source legitimately mentions a "full-stack" POC and AWS).
 - `resume_best_practices.md` — evidence-based resume/ATS guidance researched once and cached, so the generator doesn't re-research it (or spend tokens/time on it) on every run. Only claims traceable to a named study or a company's own reported data are included. Referenced by the resume-tailoring skill.
 
 ## Skills
@@ -42,8 +48,12 @@ When adding or changing tailoring behavior, prefer editing this skill (or adding
 ```
 pip install -r requirements.txt
 claude /login   # one-time, if not already logged in
-python generate_resume.py
+python generate_resume.py            # flags: --job PATH --model M --effort E --no-pdf --dry-run --cover-letter --archive-job
 ```
+
+The job posting may be `.docx`, `.pdf` (via `pypdf`), `.txt`, or `.md` (`read_input_text()`); the profile and prior resume must stay `.docx` because their structure is parsed. After PDF export the resume's page count is checked (warning over 2 pages). The contact line's email and any LinkedIn URL from the profile's Applicant info are real hyperlinks.
+
+`.env` is loaded at import time of `generate_resume.py` (before `CLAUDE_MODEL` / `CLAUDE_EFFORT` / `CLAUDE_TIMEOUT` are read), so it applies to `build_fact_bank.py` too. `find_latest()` picks the newest `in_*` file by modification time. Advisory warnings go through `warn()`, which prints and collects them into `WARNINGS` for the report; route any new warning through it.
 
 No API key is required — the script shells out to the Claude Code CLI (`claude -p`), which authenticates with your logged-in Claude subscription instead of billing per token.
 
@@ -52,6 +62,8 @@ Contact info, education, and each employer's company/location/dates/title are pa
 The tailoring rules come from the `resume-tailoring` skill and are passed with `--system-prompt-file` (a temp file), **not** `--system-prompt`: on Windows the `claude` entry is a `.CMD` shim run through `cmd.exe`, which caps the whole command line at 8191 characters, so a long inline system prompt overflows it ("The command line is too long."). Routing the prompt through a file removes that limit. Do not switch back to passing the system prompt as an inline argument.
 
 After generation, several deterministic Python checks run against the source documents before anything is written: bullets that mention a different employer are dropped, an inflated total-years-of-experience claim is corrected to match the prior resume, any lingering em dash is replaced with a comma, and bullets with unsupported numbers, unverified skills, or job-posting-buzzword "analogous to X" phrasing are flagged as console warnings for manual review (not silently modified — the model's judgment calls that don't cleanly map to a deterministic check still need a human read before sending). Skill labels pulled from the draft pass through a filter that rejects sentence-like entries, duration/scope qualifiers, and sentence fragments (keeping short canonical labels); the profile's Software/Tools and Skills entries that the job posting also names are force-included as a backfill; then the merged list is deduplicated and sorted alphabetically.
+
+`load_fact_bank()` snaps each fact's employer onto the parsed employer names (`snap_employer()`, shared with `build_fact_bank.py`) and warns about labels matching no employer, treating those facts as `unassigned`. An employer left with no tailored bullets falls back to its prior-resume bullets, with a warning. `keyword_coverage()` reports which posting terms from the candidate's own vocabulary (profile tools/skills plus fact-bank tags) the output uses, so every "missing" term is a truthful gap, never a prompt to claim something new.
 
 It then archives whatever is currently in `resume_create/` before writing the new `.docx`/`.pdf`. PDF generation uses `docx2pdf`, which drives MS Word via COM automation and therefore only works on Windows with Word installed — the `.docx` is still produced if that step fails.
 

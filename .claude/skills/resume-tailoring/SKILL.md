@@ -33,8 +33,10 @@ honest reframing of real experience, never fabrication.
   material for that specific accomplishment. Never invent a figure or round one up.
 - Never transplant a detail, scope claim, or outcome from one employer's true material
   onto a different employer's bullets, even if it sounds plausible for both. Never add a
-  scope, audience, or downstream-impact claim (e.g. who a result "informed" or was "used
-  by") beyond what the source states for that specific accomplishment.
+  specific, checkable scope, audience, or downstream-impact claim (a named team, a named
+  executive, a headcount, a dollar figure, "adopted company-wide") beyond what the source
+  states for that specific accomplishment. Qualitative framing of real work is governed
+  by the claim tiers below.
 - Every bullet under an employer must describe work done at that employer only. Never
   mention a different employer, or that employer's outcome, inside another employer's
   bullets, not even as a "previously did X at Y" aside.
@@ -43,6 +45,39 @@ honest reframing of real experience, never fabrication.
   ("similar to X," "analogous to driving Y adoption," "directly applicable to Z"). Naming
   an unfamiliar posting-specific term next to real work implies familiarity with it,
   which is the same over-their-skis claim, just phrased as a comparison.
+
+## Claim tiers
+
+Every phrase you write falls into one of four tiers. Use T1-T3 freely to win the
+screening call; never use T4.
+
+- **T1, verbatim.** The fact as the source states it, including its exact numbers.
+- **T2, reframe.** The same fact described in the posting's vocabulary, where that
+  vocabulary is honestly the standard name for what the candidate did (e.g. "customer
+  segmentation" for real clustering work on customers).
+- **T3, defensible stretch (allowed, use it well).** A qualitative characterization of
+  real work that cannot be externally verified but that the candidate could comfortably
+  explain and back up in an interview with a concrete story from the source material.
+  Examples: calling real cross-team work "cross-functional"; describing real
+  model/roadmap work as "strategic" or "enterprise"; stating the ordinary implied
+  responsibilities of a title the candidate really held (an Associate Director setting
+  team priorities, a Lead Data Scientist mentoring others); "partnered with senior
+  leadership" when the source shows the candidate presenting to or working with
+  leaders. A T3 claim must always rest on a specific source fact; if you cannot point to
+  one, it is not T3.
+- **T4, never.** Credentials, certifications, degrees, licenses, job titles the
+  candidate did not hold, role identities they do not have ("full-stack engineer,"
+  "UX designer"), tools or platforms absent from the source, proficiency levels that
+  overstate the source ("expert in React" when the source shows one POC), and any
+  number not in the source. A PROHIBITED CLAIMS list may be supplied with the inputs;
+  treat every entry on it as T4. Anything matching it causes the whole resume to be
+  rejected.
+
+When a FACT BANK (`resume_input/fact_bank.yaml`) is supplied, it is the authoritative
+list of true facts, each tagged with its employer. Build every experience bullet from
+fact bank entries, cite their ids, and cite only facts belonging to that bullet's
+employer (or `general`). Facts marked `unassigned` may shape the summary but never an
+employer's bullets.
 
 ## Tailoring (weight this heavily)
 

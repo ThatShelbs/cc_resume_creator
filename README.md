@@ -58,7 +58,13 @@ expectations):
 
 - `in_profile*.docx` — your contact info, full career details, skills, projects
 - `in_resume*.docx` — a prior resume (defines your official job titles/dates/employers)
-- `in_job*.docx` — the job posting you're tailoring toward
+- `in_job*` — the job posting you're tailoring toward, as `.docx`, `.pdf`, `.txt`, or
+  `.md` (pasting it into a `.txt` file is fine)
+
+To see the expected layout, or to try the tool without your own data, run
+`python examples/make_examples.py` and look at the anonymized files in `examples/`.
+
+These folders are git-ignored, so your career data is never committed.
 
 ## 4. Run it
 
@@ -82,12 +88,44 @@ content. You'll see progress messages as it works, followed by any warnings it f
 for your review (e.g. a claim it couldn't verify against your source documents —
 these are advisory, not errors; read them before sending the resume out).
 
+### Command-line options
+
+| Flag | What it does |
+|------|--------------|
+| `--job PATH` | Tailor to this posting instead of the newest `resume_input/in_job*` file |
+| `--cover-letter` | Also write a cover letter, built only from the validated resume content and held to the same citation and never-claim checks |
+| `--archive-job` | After a successful run, move the job posting into `resume_archive/` |
+| `--model M`, `--effort E` | Override `CLAUDE_MODEL` / `CLAUDE_EFFORT` for this run |
+| `--no-pdf` | Skip the Word-based PDF export |
+| `--dry-run` | Generate and validate, print the result, write only a report to your temp dir; nothing is archived or overwritten |
+
+When several `in_*` files match, the most recently modified one is used.
+
 ## Output
 
-- `resume_create/out_resume_<first>-<last>_<yyyy-mm-dd>.docx` and `.pdf` — the new
+- `resume_create/out_resume_<first>-<last>_<yyyy-mm-dd>.docx` and `.pdf`: the new
   resume
-- `resume_archive/out_resume_<first>-<last>_<yyyy-mm-dd>-<hh-mm-ss>.docx` — whatever
-  was previously in `resume_create/`, kept as `.docx` only
+- `resume_create/out_resume_<first>-<last>_<yyyy-mm-dd>_report.md`: the tailoring
+  report. It lists every warning, keyword coverage (posting terms you genuinely have,
+  and which of them the resume uses), each bullet with the fact-bank facts it cites,
+  the resume's page count (warning over 2 pages), and the raw draft. Read it before
+  sending the resume.
+- `resume_create/out_cover_letter_<first>-<last>_<yyyy-mm-dd>.docx` and `.pdf`: with
+  `--cover-letter`. It is archived the same way as the resume.
+- `resume_archive/out_resume_<first>-<last>_<yyyy-mm-dd>-<hh-mm-ss>.docx` (and
+  `..._report.md`): whatever was previously in `resume_create/`. The PDF is not
+  archived.
+
+## Optional: fact bank and never-claim list
+
+- **`resume_input/fact_bank.yaml`**: one atomic, true fact per entry, tagged with its
+  employer. Draft it once with `python build_fact_bank.py`, then edit it by hand. When
+  it exists, every bullet must cite fact ids; bullets citing unknown, `unassigned`, or
+  another employer's facts are dropped. An employer label that matches no employer in
+  your prior resume is flagged as a warning.
+- **`do_not_claim.txt`**: one case-insensitive regex per line for claims that must
+  never appear (certifications, role identities, tools you don't use). Any match
+  aborts the run before anything is written.
 
 ## Optional configuration
 
@@ -96,7 +134,18 @@ Create a `.env` file in the repo root to override defaults (none of this is requ
 ```
 CLAUDE_MODEL=sonnet
 CLAUDE_EFFORT=medium
+CLAUDE_TIMEOUT=600   # seconds per Claude CLI call
 ```
+
+## Tests
+
+```
+pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+The tests cover the deterministic parsing and validation code only; they make no
+Claude calls.
 
 ## Troubleshooting
 
