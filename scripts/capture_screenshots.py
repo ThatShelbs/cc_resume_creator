@@ -7,7 +7,7 @@ report any page that scrolls sideways on a phone.
     python launcher.py --data-root demo_workspace --no-browser     # in another terminal
     python scripts/capture_screenshots.py
 
-Needs `pip install playwright` (requirements-dev.txt). It drives the Microsoft
+Needs `pip install playwright` (the backend[dev] extra). It drives the Microsoft
 Edge (or Chrome) already installed on the machine, so no browser download.
 """
 
@@ -17,7 +17,8 @@ from pathlib import Path
 
 from playwright.sync_api import Page, sync_playwright
 
-ROOT = Path(__file__).resolve().parent.parent
+from resume_taylor.layout import REPO_ROOT
+
 PHONE_ROUTES = ["/", "/projects/new", "{workspace}", "/profile", "/resume", "/evidence", "/settings", "/welcome"]
 
 
@@ -50,7 +51,7 @@ def open_browser(p):
 def main() -> None:
     parser = argparse.ArgumentParser(description="Capture Resume Taylor screenshots.")
     parser.add_argument("--url", default="http://127.0.0.1:8765")
-    parser.add_argument("--out", type=Path, default=ROOT / "docs" / "screenshots")
+    parser.add_argument("--out", type=Path, default=REPO_ROOT / "docs" / "screenshots")
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     problems = []
@@ -83,7 +84,7 @@ def main() -> None:
                 page.screenshot(path=args.out / "templates-light.png")
                 page.goto(args.url + "/projects/new")
                 settle(page)
-                job = (ROOT / "examples" / "in_job_example.txt").read_text(encoding="utf-8")
+                job = (REPO_ROOT / "examples" / "in_job_example.txt").read_text(encoding="utf-8")
                 page.get_by_label("Job posting text").fill(job)
                 page.wait_for_timeout(900)  # company/role suggestion
                 page.screenshot(path=args.out / "new-project-light.png")

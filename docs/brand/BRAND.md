@@ -1,6 +1,6 @@
 # Resume Taylor brand guide
 
-<img src="../../webapp/frontend/public/favicon.svg" alt="Resume Taylor mark" width="96">
+<img src="../../frontend/public/favicon.svg" alt="Resume Taylor mark" width="96">
 
 **Resume Taylor** is a pun on *tailor*: the app tailors your real history to each job,
 and never makes anything up. The personality comes from sewing (dress forms, tape
@@ -22,7 +22,7 @@ concert-evening palette.
 | ![](https://img.shields.io/badge/-%20%20%20%20-D3CFC8) | Stone | `#D3CFC8` | Borders and inputs (day) |
 | ![](https://img.shields.io/badge/-%20%20%20%20-7A7474) | Warm gray | `#7A7474` | Secondary text (darkened slightly for contrast) |
 
-In code the raw colors are `--brand-*` CSS variables (`webapp/frontend/src/index.css`) and
+In code the raw colors are `--brand-*` CSS variables (`frontend/src/index.css`) and
 Tailwind's `brand.*` colors. Components use the semantic tokens (`primary`, `success`,
 `muted-foreground`, ...), which are tuned from the palette for readable contrast in each
 theme. Prefer those over raw brand colors for anything that carries meaning.
@@ -39,13 +39,13 @@ theme. Prefer those over raw brand colors for anything that carries meaning.
 The mark is a tailor's dress form on a stand, with a gold tape measure at the neck, a strand
 of palette beads at the waist, and a sequin sparkle, on a navy-to-burgundy tile.
 
-- Source of truth: `webapp/frontend/public/favicon.svg`. Every raster is rendered from it by
+- Source of truth: `frontend/public/favicon.svg`. Every raster is rendered from it by
   `python scripts/make_brand_assets.py` (desktop `.ico`, README banner, social preview).
 - Keep it on its own tile; don't recolor, stretch, or add effects.
 
 ## Flourishes
 
-- `BeadBracelet` and `Sequins` in `webapp/frontend/src/components/brand.tsx`.
+- `BeadBracelet` and `Sequins` in `frontend/src/components/shared/brand.tsx`.
 - `.bg-brand-gradient`, `.stitch` (a dashed seam), and `.bead-rule` in `index.css`.
 - Sewing words in progress steps ("Taking measurements", "Pressing the PDF"). Keep the
   detail line under each one plain and factual.

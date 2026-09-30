@@ -4,7 +4,7 @@
   browser into docs/brand/banner.png (README hero, ?v=readme) and
   docs/brand/social-preview.png (GitHub social preview, ?v=social).
   Fonts come from the web app's node_modules (run npm install in
-  webapp/frontend first); without them it falls back to Georgia and Segoe UI.
+  frontend first); without them it falls back to Georgia and Segoe UI.
 -->
 <html lang="en">
 <head>
@@ -15,13 +15,13 @@
     font-family: "Fraunces Variable";
     font-style: italic;
     font-weight: 100 900;
-    src: url(../../webapp/frontend/node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-italic.woff2) format("woff2-variations");
+    src: url(../../frontend/node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-italic.woff2) format("woff2-variations");
   }
   @font-face {
     font-family: "Inter Variable";
     font-style: normal;
     font-weight: 100 900;
-    src: url(../../webapp/frontend/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2) format("woff2-variations");
+    src: url(../../frontend/node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2) format("woff2-variations");
   }
   :root {
     --navy: #343C5B; --sage: #BDD6B9; --gold: #F6CC8F; --lilac: #D0B3D1; --burgundy: #843745;
@@ -86,7 +86,7 @@
   <svg class="spark" style="left: 330px; top: 40px; width: 12px; color: var(--sage)" viewBox="0 0 24 24"><path fill="currentColor" d="M12 0l2.7 9.3L24 12l-9.3 2.7L12 24l-2.7-9.3L0 12l9.3-2.7z"/></svg>
 
   <div class="stage">
-    <img class="mark" src="../../webapp/frontend/public/favicon.svg" alt="">
+    <img class="mark" src="../../frontend/public/favicon.svg" alt="">
     <div>
       <div class="word">Resume<em>Taylor</em></div>
       <div class="tag">Truthful resumes, tailored to every job posting.</div>
