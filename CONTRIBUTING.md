@@ -1,6 +1,6 @@
 # Contributing and internals
 
-This page is for people changing the code. If you just want to use Resume Studio,
+This page is for people changing the code. If you just want to use Resume Taylor,
 the [README](README.md) is all you need.
 
 ## Setup for development
@@ -81,9 +81,9 @@ flowchart LR
 - **Security for a local app:** the server binds to 127.0.0.1, rejects non-loopback
   Host headers (DNS rebinding), and requires a per-launch token on every API call.
 
-Code map: `studio/` (API, project store, resume ingestion, fact bank, live linting,
+Code map: `taylor/` (API, project store, resume ingestion, fact bank, live linting,
 job runner), `webapp/frontend/` (React app), `generate_resume.py` (pipeline),
-`launcher.py` and `Launch Resume Studio.bat` (startup). See [CLAUDE.md](CLAUDE.md) for
+`launcher.py` and `Launch Resume Taylor.bat` (startup). See [CLAUDE.md](CLAUDE.md) for
 internals.
 
 ## Command-line use

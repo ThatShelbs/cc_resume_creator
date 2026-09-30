@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
 import { useSystem } from "@/lib/queries";
 
-const DISMISS_KEY = "studio-dismissed-word-banner";
+const DISMISS_KEY = "taylor-dismissed-word-banner";
 
 /** System problems that would make generation fail, surfaced up front. */
 export function HealthBanner() {
@@ -37,7 +37,7 @@ export function HealthBanner() {
         <p className="leading-relaxed">
           <span className="font-medium">The Claude Code CLI wasn't found.</span>{" "}
           <span className="text-muted-foreground">
-            Close this window and double-click <code className="rounded bg-background/70 px-1">Launch Resume Studio.bat</code>{" "}
+            Close this window and double-click <code className="rounded bg-background/70 px-1">Launch Resume Taylor.bat</code>{" "}
             again; it installs and signs in for you. You can still edit everything in the meantime.
           </span>
         </p>

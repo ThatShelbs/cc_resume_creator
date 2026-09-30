@@ -115,7 +115,7 @@ export default function NewProjectPage() {
       </Button>
       <PageHeader
         title="New project"
-        description="Paste the job posting you're applying to. Resume Studio tailors your real experience to it, and every claim stays traceable to your own materials."
+        description="Paste the job posting you're applying to. Resume Taylor tailors your real experience to it, and every claim stays traceable to your own materials."
       />
 
       {!ready && (

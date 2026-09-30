@@ -1,4 +1,4 @@
-"""Plain-English health check for Resume Studio (run by Doctor.bat).
+"""Plain-English health check for Resume Taylor (run by Doctor.bat).
 
 Prints what is installed and what is missing, with your user name and folders
 hidden, so the output is safe to paste into a bug report.
@@ -36,7 +36,7 @@ def run(cmd: list[str], timeout: int = 20) -> str:
 
 
 def main() -> int:
-    print("Resume Studio doctor\n")
+    print("Resume Taylor doctor\n")
     problems = 0
 
     ok = sys.version_info >= (3, 10)
@@ -44,7 +44,7 @@ def main() -> int:
     problems += not ok
 
     venv = ROOT / ".venv" / "Scripts" / "python.exe"
-    line(venv.exists(), "Private Python environment (.venv)", "" if venv.exists() else "run Launch Resume Studio.bat once")
+    line(venv.exists(), "Private Python environment (.venv)", "" if venv.exists() else "run Launch Resume Taylor.bat once")
 
     missing = []
     for mod in ("fastapi", "uvicorn", "docx", "yaml", "pypdf", "multipart", "dotenv"):
@@ -60,7 +60,7 @@ def main() -> int:
     problems += not dist.exists()
 
     claude = shutil.which("claude") or shutil.which("claude", path=str(Path.home() / ".local" / "bin"))
-    line(bool(claude), "Claude tool installed", claude or "run Launch Resume Studio.bat to install it")
+    line(bool(claude), "Claude tool installed", claude or "run Launch Resume Taylor.bat to install it")
     problems += not claude
     env_key = os.environ.get("ANTHROPIC_API_KEY", "")
     try:
@@ -70,7 +70,7 @@ def main() -> int:
     except ImportError:
         pass
 
-    from studio.paths import default_data_root
+    from taylor.paths import default_data_root
 
     data_root = default_data_root()
     saved_key = (data_root / "secrets.json").exists()
@@ -108,7 +108,7 @@ def main() -> int:
     port_taken = False
     with socket.socket() as s:
         port_taken = s.connect_ex(("127.0.0.1", 8765)) == 0
-    line(None, "Port 8765", "in use (another Resume Studio may be running; that is fine)" if port_taken else "free")
+    line(None, "Port 8765", "in use (another Resume Taylor may be running; that is fine)" if port_taken else "free")
 
     print("\n" + ("Everything needed is in place." if not problems else f"{problems} thing(s) need attention (see [FAIL] above)."))
     return 0

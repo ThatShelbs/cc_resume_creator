@@ -1,7 +1,7 @@
 # Hard "never claim" list. One case-insensitive regex per line; blank lines and
 # lines starting with # are ignored.
 #
-# Resume Studio passes these to the tailoring call as off-limits, then FAILS the
+# Resume Taylor passes these to the tailoring call as off-limits, then FAILS the
 # run (writes nothing) if any pattern matches the generated summary, bullets, or
 # skills. Use phrases, not bare words, so legitimate wording is not blocked.
 #

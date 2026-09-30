@@ -3,28 +3,36 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="studio-token" content="__STUDIO_TOKEN__" />
+    <meta name="taylor-token" content="__TAYLOR_TOKEN__" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="description" content="Resume Studio: tailor a truthful resume to every job posting." />
+    <meta name="description" content="Resume Taylor: tailor a truthful resume to every job posting." />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>Resume Studio</title>
+    <title>Resume Taylor</title>
     <script>
       // Apply the saved theme before first paint so there's never a flash of
       // the wrong colors. Mirrors src/lib/theme.tsx.
       (function () {
         try {
-          var pref = localStorage.getItem("studio-theme") || "system";
+          // One-time carry-over of settings saved under the app's old name.
+          ["theme", "sidebar-collapsed", "dismissed-word-banner"].forEach(function (k) {
+            var old = localStorage.getItem("studio-" + k);
+            if (old !== null) {
+              if (localStorage.getItem("taylor-" + k) === null) localStorage.setItem("taylor-" + k, old);
+              localStorage.removeItem("studio-" + k);
+            }
+          });
+          var pref = localStorage.getItem("taylor-theme") || "system";
           var dark = pref === "dark" || (pref === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
           document.documentElement.classList.toggle("dark", dark);
           document.documentElement.style.colorScheme = dark ? "dark" : "light";
         } catch (e) {}
       })();
     </script>
-    <script type="module" crossorigin src="/assets/index-JBmC1_fV.js"></script>
+    <script type="module" crossorigin src="/assets/index-BYc8mOLv.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/react-DfsjTOzb.js">
     <link rel="modulepreload" crossorigin href="/assets/radix-BnnyhFAe.js">
     <link rel="modulepreload" crossorigin href="/assets/pdf-C_rYuEhg.js">
-    <link rel="stylesheet" crossorigin href="/assets/index-BIP2fArW.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-YYHoZgDV.css">
   </head>
   <body>
     <div id="root"></div>

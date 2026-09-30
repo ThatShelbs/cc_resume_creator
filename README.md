@@ -1,10 +1,31 @@
-# Resume Studio
+<p align="center">
+  <img src="docs/brand/banner.png" alt="Resume Taylor: truthful resumes, tailored to every job posting" width="100%">
+</p>
 
-**Truthful resumes, tailored to every job posting.** Resume Studio takes the career
-history you already have (a resume plus a profile of accomplishments) and tailors
-it to one specific job posting with Claude, then verifies every number, citation,
-and claim before a single file is written. Everything runs locally; generation uses
-your Claude subscription through the Claude Code CLI.
+<p align="center">
+  <a href="https://github.com/ThatShelbs/cc_resume_creator/actions/workflows/ci.yml"><img src="https://github.com/ThatShelbs/cc_resume_creator/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-843745" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/python-3.10%2B-343C5B?logo=python&logoColor=white" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/FastAPI-backend-343C5B?logo=fastapi&logoColor=white" alt="FastAPI">
+  <img src="https://img.shields.io/badge/React%20%2B%20TypeScript-frontend-343C5B?logo=react&logoColor=white" alt="React and TypeScript">
+  <img src="https://img.shields.io/badge/runs-100%25%20local-7A9B74" alt="Runs locally">
+  <img src="https://img.shields.io/badge/powered%20by-Claude%20Code-B8860B" alt="Powered by Claude Code">
+</p>
+
+<p align="center">
+  <a href="#get-started-windows-about-10-minutes">Get started</a> ·
+  <a href="#what-it-does">Features</a> ·
+  <a href="#your-privacy">Privacy</a> ·
+  <a href="#troubleshooting">Troubleshooting</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a>
+</p>
+
+**Resume Taylor tailors your resume to each job, and only with what's true.** Give it the
+career history you already have (a resume plus a profile of accomplishments) and a job
+posting. Claude selects, orders, and rephrases your real experience for that role, then
+deterministic checks verify every number, citation, and claim before a single file is
+written. Everything runs on your computer; generation uses your Claude subscription through
+the Claude Code CLI.
 
 <p>
   <img src="docs/screenshots/workspace-light.png" alt="Project workspace in day mode: content editor with fact citations beside the rendered PDF" width="49%">
@@ -22,7 +43,7 @@ and either a **Claude subscription** (Pro or Max) or an **Anthropic API key**.
 
 1. On this GitHub page click the green **Code** button, then **Download ZIP**.
 2. Right-click the downloaded ZIP, choose **Extract All**, and pick a simple folder
-   such as `C:\ResumeStudio`. Avoid OneDrive and "Program Files".
+   such as `C:\ResumeTaylor`. Avoid OneDrive and "Program Files".
 
 *Want your own copy on GitHub instead?* Click **Fork** (top right), then download the ZIP
 from **your** fork. Keep your fork **private** if you plan to change files. You do not
@@ -31,7 +52,7 @@ have to, because your resumes and job postings are never stored in this folder (
 
 ### 2. Start it
 
-Double-click **`Launch Resume Studio.bat`**.
+Double-click **`Launch Resume Taylor.bat`**.
 
 - If Windows says "Windows protected your PC", click **More info**, then **Run anyway**.
   (That message appears for any program that is not from the Microsoft Store.)
@@ -41,7 +62,7 @@ Double-click **`Launch Resume Studio.bat`**.
   2. Install the Claude tool (only if you do not have it).
   3. Sign in to Claude (a browser window opens; log in and come back).
 - This takes 2 to 5 minutes once. Next time it opens in seconds.
-- Your browser opens Resume Studio. **Keep the black window open** while you use the app,
+- Your browser opens Resume Taylor. **Keep the black window open** while you use the app,
   and close it to stop.
 
 ### 3. Sign in (choose one)
@@ -49,7 +70,7 @@ Double-click **`Launch Resume Studio.bat`**.
 - **Claude subscription (recommended).** The launcher offers to sign you in on first run.
   To do it later, open a terminal and run `claude auth login`.
 - **Anthropic API key.** In the app go to **Settings, Claude sign-in** and paste a key
-  that starts with `sk-ant-`. Or open the file named `.env` in the Resume Studio folder,
+  that starts with `sk-ant-`. Or open the file named `.env` in the Resume Taylor folder,
   remove the `#` at the start of the `ANTHROPIC_API_KEY=` line, paste your key after the
   `=`, and save. API use is billed per use by Anthropic; a subscription is not.
 
@@ -68,6 +89,10 @@ Microsoft Word is used for PDF export; without it you still get Word (`.docx`) f
 
 Double-click `Update.bat` (if you used `git clone`), or download the new ZIP and unzip it
 to a new folder. Your data is kept outside the code folder, so an update never touches it.
+
+**Coming from Resume Studio?** That was this app's old name. Your data folder
+(`%LOCALAPPDATA%\ResumeStudio`) is moved to `%LOCALAPPDATA%\ResumeTaylor` the first time the new
+version starts, and `Update.bat` replaces an old "Resume Studio" desktop shortcut.
 
 ## What it does
 
@@ -107,11 +132,11 @@ to a new folder. Your data is kept outside the code folder, so an update never t
 
 ## Your privacy
 
-Resume Studio runs only on your computer. The one thing that leaves it is the text sent to
+Resume Taylor runs only on your computer. The one thing that leaves it is the text sent to
 Claude when you press Generate.
 
 - **Your resumes, profile, job postings, and the companies you apply to are stored in
-  `%LOCALAPPDATA%\ResumeStudio`** (Settings shows the exact folder, with buttons to open it and
+  `%LOCALAPPDATA%\ResumeTaylor`** (Settings shows the exact folder, with buttons to open it and
   to back it up). That folder is outside this code folder, so downloading, updating, forking, or
   running `git add .` cannot upload it.
 - Your API key (if you use one) is kept in that same folder, is never shown back in the app,
@@ -134,7 +159,7 @@ safe to paste into a bug report.
 | "The Claude Code CLI wasn't found" | Close the window, double-click the launcher again, and press **Y** to install |
 | No PDF, only a `.docx` | PDF export needs Microsoft Word; the Word file is complete |
 | A file is "locked, most likely open in Word" | Close it in Word and try again |
-| The launcher window closes right away | Move the folder to a short path like `C:\ResumeStudio` and try again |
+| The launcher window closes right away | Move the folder to a short path like `C:\ResumeTaylor` and try again |
 | Antivirus quarantines a file | The app only opens local web pages on 127.0.0.1. Allow the folder, or ask for help in an issue |
 
 ## For developers
@@ -142,6 +167,16 @@ safe to paste into a bug report.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for how it works, command-line use, tests, and rebuilding
 the web app, and [CLAUDE.md](CLAUDE.md) for internals.
 
+## Contributing
+
+Issues and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup, tests,
+and the house rules (the biggest one: the app must never help anyone claim something that
+isn't in their own materials). Brand colors and logo usage are in
+[docs/brand/BRAND.md](docs/brand/BRAND.md).
+
 ## License
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE). A free, non-commercial, educational side project.
+
+<sub>The name is a pun on <em>tailor</em>. Resume Taylor is not affiliated with or endorsed by any
+person, brand, or tour.</sub>

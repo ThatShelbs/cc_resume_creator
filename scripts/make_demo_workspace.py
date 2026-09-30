@@ -17,8 +17,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "examples"))
 
-from studio.demo import seed_workspace  # noqa: E402
-from studio.paths import Paths, remove_tree  # noqa: E402
+from taylor.demo import seed_workspace  # noqa: E402
+from taylor.paths import Paths, remove_tree  # noqa: E402
 
 
 def main() -> None:
