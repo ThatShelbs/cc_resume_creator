@@ -8,17 +8,20 @@ the [README](README.md) is all you need.
 You need Python 3.10+ and, only for changing the web app, Node.js 20+.
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -e "backend[dev]"
 ```
 ```bash
-python -m pytest -q
+cd backend && python -m pytest -q
 ```
 ```bash
-cd webapp/frontend && npm install && npm run check
+ruff check backend scripts examples
+```
+```bash
+cd frontend && npm install && npm run check
 ```
 
 - `npm run check` runs TypeScript, ESLint, and Vitest.
-- `npm run gen:api` regenerates `src/lib/api-schema.d.ts` from the server's Pydantic
+- `npm run gen:api` regenerates `src/lib/api/schema.d.ts` from the server's Pydantic
   models, so frontend and backend types can't drift.
 - `python scripts/make_template_previews.py` re-renders the template thumbnails
   (needs Word).
@@ -28,8 +31,8 @@ cd webapp/frontend && npm install && npm run check
 No test makes a Claude call; the API tests swap in a fake pipeline script.
 
 
-The web app is shipped prebuilt in `webapp/frontend/dist` so that end users do not
-need Node.js. **After changing anything in `webapp/frontend/src`, run `npm run build`
+The web app is shipped prebuilt in `frontend/dist` so that end users do not
+need Node.js. **After changing anything in `frontend/src`, run `npm run build`
 and commit the updated `dist/`** (CI fails if it is stale). The launcher rebuilds
 automatically for anyone who has run `npm install` (a `node_modules` folder exists).
 
@@ -53,7 +56,7 @@ flowchart LR
     Store[("projects/&lt;id&gt;/<br/>result.json · outputs/ · versions/")]
   end
   subgraph Pipeline
-    Gen["generate_resume.py"]
+    Gen["resume_taylor.pipeline"]
     Skill[".claude/skills/<br/>resume-tailoring"]
     CLI["Claude Code CLI"]
     Word["Word (COM)<br/>docx to pdf"]
@@ -70,7 +73,7 @@ flowchart LR
 - **The pipeline stays the single source of truth.** The app keeps your inputs in
   the exact files the command-line pipeline reads (`resume_input/in_profile*.docx`,
   `in_resume*.docx`, `fact_bank.yaml`, `do_not_claim.txt`), and runs
-  `generate_resume.py` as a subprocess for every generation and re-render. The
+  the pipeline (`python -m resume_taylor.pipeline`) as a subprocess for every generation and re-render. The
   tailoring rules live only in the `resume-tailoring` skill.
 - **Generation** is a drafting call plus a narrow JSON transcription call, followed by
   deterministic validation (citations, cross-employer mentions, numbers, em dashes,
@@ -81,10 +84,35 @@ flowchart LR
 - **Security for a local app:** the server binds to 127.0.0.1, rejects non-loopback
   Host headers (DNS rebinding), and requires a per-launch token on every API call.
 
-Code map: `taylor/` (API, project store, resume ingestion, fact bank, live linting,
-job runner), `webapp/frontend/` (React app), `generate_resume.py` (pipeline),
-`launcher.py` and `Launch Resume Taylor.bat` (startup). See [CLAUDE.md](CLAUDE.md) for
-internals.
+## Repository map
+
+```text
+backend/                     the Python side (pip install -e backend)
+  pyproject.toml             dependencies, console scripts, pytest config
+  src/resume_taylor/
+    layout.py, config.py     where things live; settings from the environment / .env
+    claude_cli.py            running the `claude` CLI as a text-generation step
+    launcher.py              starts the app and opens the browser
+    pipeline/                the resume pipeline (parsing, Claude calls, guards, output)
+      render/                templates, .docx builder, PDF export
+    app/                     the browser app's FastAPI backend
+      routers/               the HTTP API, one module per area
+      services/              background jobs, live lint, sample data, system status
+      storage/               files on disk: projects, profile, facts, settings, paths
+    sample_data/, resources/ the fictional demo applicant; the starter never-claim list
+  tests/                     pipeline/ and app/ tests (no test makes a Claude call)
+frontend/                    the React app (Vite + TypeScript); dist/ is committed
+  src/features/              one folder per screen
+  src/components/            ui/ (primitives), layout/, shared/ (app-wide pieces)
+  src/lib/api/               API client, react-query hooks, SSE, types, generated schema
+.claude/skills/              the tailoring rules (single source of truth)
+docs/  examples/  scripts/   brand and screenshots, sample inputs, dev/maintenance scripts
+generate_resume.py           thin shims so `python generate_resume.py` (and
+build_fact_bank.py           `python build_fact_bank.py`, `python launcher.py`)
+launcher.py                  keep working; the code is in the package
+```
+
+See [CLAUDE.md](CLAUDE.md) for internals.
 
 ## Command-line use
 
@@ -92,7 +120,7 @@ The original CLI still works on its own, with `resume_input/` as the inputs and
 `resume_create/` / `resume_archive/` as the outputs:
 
 ```bash
-python generate_resume.py
+python generate_resume.py          # same as: python -m resume_taylor.pipeline
 ```
 
 | Flag | What it does |

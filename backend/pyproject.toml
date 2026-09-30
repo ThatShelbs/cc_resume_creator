@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "resume-taylor"
+version = "1.0.0"
+description = "Tailors a candidate's real career history to one job posting, without stretching the truth."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "python-docx",
+    "docx2pdf",
+    "pywin32; sys_platform == 'win32'",
+    "python-dotenv",
+    "pyyaml",
+    "pypdf",
+    "fastapi",
+    "uvicorn[standard]",
+    "python-multipart",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "httpx",
+    "pypdfium2",  # PDF -> PNG for template previews and screenshots
+    "pillow",
+    "playwright",  # README screenshots, brand assets
+    "ruff",
+]
+
+[project.scripts]
+resume-taylor = "resume_taylor.launcher:main"
+resume-taylor-generate = "resume_taylor.pipeline.cli:main"
+resume-taylor-facts = "resume_taylor.pipeline.build_fact_bank:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+resume_taylor = ["resources/*.txt"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "../examples", "tests"]
+filterwarnings = ["ignore::DeprecationWarning:starlette.testclient"]
