@@ -101,7 +101,7 @@ def test_merge_and_sort_skills_backfills_only_posting_terms():
 
 
 def test_deny_list_blocks_identities_not_collaboration():
-    patterns = g.load_deny_patterns()
+    patterns = g.load_deny_patterns(Path(__file__).parent / "deny_fixture.txt")
     ok = g.find_deny_violations("Partnered with software engineers.", {}, [], patterns)
     bad = g.find_deny_violations("Worked as a full-stack engineer.", {}, ["Figma"], patterns)
     assert ok == []

@@ -13,6 +13,62 @@ your Claude subscription through the Claude Code CLI.
 
 *Screenshots use a fictional demo persona (`examples/demo_data.py`).*
 
+## Get started (Windows, about 10 minutes)
+
+You do not need to know how to code. You need a Windows PC, an internet connection,
+and either a **Claude subscription** (Pro or Max) or an **Anthropic API key**.
+
+### 1. Download it
+
+1. On this GitHub page click the green **Code** button, then **Download ZIP**.
+2. Right-click the downloaded ZIP, choose **Extract All**, and pick a simple folder
+   such as `C:\ResumeStudio`. Avoid OneDrive and "Program Files".
+
+*Want your own copy on GitHub instead?* Click **Fork** (top right), then download the ZIP
+from **your** fork. Keep your fork **private** if you plan to change files. You do not
+have to, because your resumes and job postings are never stored in this folder (see
+[Your privacy](#your-privacy)).
+
+### 2. Start it
+
+Double-click **`Launch Resume Studio.bat`**.
+
+- If Windows says "Windows protected your PC", click **More info**, then **Run anyway**.
+  (That message appears for any program that is not from the Microsoft Store.)
+- The first time, it sets everything up for you and asks a few yes/no questions. Press
+  **Y** to each:
+  1. Install Python (only if you do not have it).
+  2. Install the Claude tool (only if you do not have it).
+  3. Sign in to Claude (a browser window opens; log in and come back).
+- This takes 2 to 5 minutes once. Next time it opens in seconds.
+- Your browser opens Resume Studio. **Keep the black window open** while you use the app,
+  and close it to stop.
+
+### 3. Sign in (choose one)
+
+- **Claude subscription (recommended).** The launcher offers to sign you in on first run.
+  To do it later, open a terminal and run `claude auth login`.
+- **Anthropic API key.** In the app go to **Settings, Claude sign-in** and paste a key
+  that starts with `sk-ant-`. Or open the file named `.env` in the Resume Studio folder,
+  remove the `#` at the start of the `ANTHROPIC_API_KEY=` line, paste your key after the
+  `=`, and save. API use is billed per use by Anthropic; a subscription is not.
+
+### 4. Look around, then make it yours
+
+- Click **Try it with sample data** on the welcome screen to explore a made-up applicant
+  (Jordan Rivera) with three example jobs. Nothing personal, and no Claude use needed to look
+  around. When you are done, click **Clear sample data** in the banner.
+- Or click **Get started**, upload the resume you already have (PDF or Word), confirm your
+  profile, and paste your first job posting.
+
+**Nice extras:** double-click `Create Desktop Shortcut.bat` for a desktop icon.
+Microsoft Word is used for PDF export; without it you still get Word (`.docx`) files.
+
+### Updating
+
+Double-click `Update.bat` (if you used `git clone`), or download the new ZIP and unzip it
+to a new folder. Your data is kept outside the code folder, so an update never touches it.
+
 ## What it does
 
 - **Paste a job posting, get a tailored resume.** A project per application keeps the
@@ -49,146 +105,43 @@ your Claude subscription through the Claude Code CLI.
   <img src="docs/screenshots/evidence-light.png" alt="Fact bank editor" width="49%">
 </p>
 
-## Quick start (Windows)
+## Your privacy
 
-1. Install **Python 3.10+** ([python.org](https://www.python.org/downloads/), tick
-   "Add python.exe to PATH") and **Node.js** ([nodejs.org](https://nodejs.org/)).
-2. Install and sign in to the **Claude Code CLI**:
-   ```bash
-   npm install -g @anthropic-ai/claude-code
-   ```
-   ```bash
-   claude /login
-   ```
-3. Double-click **`Launch Resume Studio.bat`**.
+Resume Studio runs only on your computer. The one thing that leaves it is the text sent to
+Claude when you press Generate.
 
-The first launch creates a private Python environment (`.venv`) and builds the web
-app, which takes a few minutes. After that it opens in your browser in seconds. Keep
-the console window open while you use it; close it to stop the app.
-
-Microsoft Word is used to export PDFs. Without it you still get `.docx` files. To
-put a shortcut on your desktop, run `scripts/create_desktop_shortcut.ps1` once.
-
-**Other platforms / developers:** `pip install -r requirements.txt`, then
-`python launcher.py` (add `--dev` for Vite hot reload on port 5173).
-
-**Try it with demo data** (a fictional persona, no Claude calls needed to explore):
-
-```bash
-python scripts/make_demo_workspace.py
-```
-```bash
-python launcher.py --data-root demo_workspace
-```
-
-## How it works
-
-```mermaid
-flowchart LR
-  subgraph Browser
-    UI["React SPA<br/>Vite · TypeScript · Tailwind · Radix"]
-  end
-  subgraph Local server
-    API["FastAPI<br/>token + loopback guard"]
-    Jobs["Job runner<br/>one at a time, SSE progress"]
-    Store[("projects/&lt;id&gt;/<br/>result.json · outputs/ · versions/")]
-  end
-  subgraph Pipeline
-    Gen["generate_resume.py"]
-    Skill[".claude/skills/<br/>resume-tailoring"]
-    CLI["Claude Code CLI"]
-    Word["Word (COM)<br/>docx to pdf"]
-  end
-  UI <-->|"REST + Server-Sent Events"| API
-  API --> Store
-  API --> Jobs --> Gen
-  Gen --> Skill
-  Gen --> CLI
-  Gen --> Word
-  Gen -->|"::stage markers, result JSON"| Jobs
-```
-
-- **The pipeline stays the single source of truth.** The app keeps your inputs in
-  the exact files the command-line pipeline reads (`resume_input/in_profile*.docx`,
-  `in_resume*.docx`, `fact_bank.yaml`, `do_not_claim.txt`), and runs
-  `generate_resume.py` as a subprocess for every generation and re-render. The
-  tailoring rules live only in the `resume-tailoring` skill.
-- **Generation** is a drafting call plus a narrow JSON transcription call, followed by
-  deterministic validation (citations, cross-employer mentions, numbers, em dashes,
-  the never-claim list, keyword coverage). The result is saved as editable JSON.
-- **Re-rendering** (`--render-json`) re-runs the same guards on your edited content
-  and writes the files without calling Claude, so template switches and hand edits
-  are instant and free.
-- **Security for a local app:** the server binds to 127.0.0.1, rejects non-loopback
-  Host headers (DNS rebinding), and requires a per-launch token on every API call.
-
-Code map: `studio/` (API, project store, resume ingestion, fact bank, live linting,
-job runner), `webapp/frontend/` (React app), `generate_resume.py` (pipeline),
-`launcher.py` and `Launch Resume Studio.bat` (startup). See [CLAUDE.md](CLAUDE.md) for
-internals.
-
-## Command-line use
-
-The original CLI still works on its own, with `resume_input/` as the inputs and
-`resume_create/` / `resume_archive/` as the outputs:
-
-```bash
-python generate_resume.py
-```
-
-| Flag | What it does |
-|------|--------------|
-| `--job PATH` | Tailor to this posting instead of the newest `resume_input/in_job*` file |
-| `--profile`, `--resume`, `--fact-bank`, `--deny` | Use these input files instead of the defaults |
-| `--template {classic,modern,compact}` | Resume layout (default: classic) |
-| `--cover-letter` | Also write a cover letter, held to the same citation and never-claim checks |
-| `--out-dir`, `--archive-dir` | Where outputs and superseded outputs go |
-| `--result-json PATH` | Also save the structured, editable result |
-| `--render-json PATH` | Re-validate and render a saved result without calling Claude |
-| `--model M`, `--effort E` | Override `CLAUDE_MODEL` / `CLAUDE_EFFORT` |
-| `--no-pdf`, `--dry-run`, `--archive-job` | Skip PDF export / write nothing / archive the posting after a run |
-
-Optional inputs: `resume_input/fact_bank.yaml` (draft it with
-`python build_fact_bank.py`, then edit by hand or in the app) and `do_not_claim.txt`
-(one case-insensitive regex per line). Optional `.env` settings: `CLAUDE_MODEL`,
-`CLAUDE_EFFORT`, `CLAUDE_TIMEOUT`.
-
-## Your data
-
-Everything stays on your computer in plain files: `resume_input/` (inputs),
-`projects/` (one folder per application), `resume_archive/` (automatic backups of
-every profile, resume, and fact-bank save). All of these are git-ignored, so career
-data is never committed.
-
-## Development
-
-```bash
-pip install -r requirements-dev.txt
-```
-```bash
-python -m pytest -q
-```
-```bash
-cd webapp/frontend && npm install && npm run check
-```
-
-- `npm run check` runs TypeScript, ESLint, and Vitest.
-- `npm run gen:api` regenerates `src/lib/api-schema.d.ts` from the server's Pydantic
-  models, so frontend and backend types can't drift.
-- `python scripts/make_template_previews.py` re-renders the template thumbnails
-  (needs Word).
-- `python scripts/capture_screenshots.py` retakes these screenshots against a
-  running demo workspace and fails if any page scrolls sideways on a phone.
-
-No test makes a Claude call; the API tests swap in a fake pipeline script.
+- **Your resumes, profile, job postings, and the companies you apply to are stored in
+  `%LOCALAPPDATA%\ResumeStudio`** (Settings shows the exact folder, with buttons to open it and
+  to back it up). That folder is outside this code folder, so downloading, updating, forking, or
+  running `git add .` cannot upload it.
+- Your API key (if you use one) is kept in that same folder, is never shown back in the app,
+  and is not written to logs.
+- Extra protection for anyone who changes the code: `.gitignore` blocks personal files, and
+  `python scripts/check_no_personal_data.py --install-hook` adds a pre-commit check that refuses
+  to commit resumes, `.env`, or keys. See [SECURITY.md](SECURITY.md).
+- The sample data and screenshots use a made-up person.
 
 ## Troubleshooting
 
-- **"Claude CLI needs you to sign in"**: run `claude /login` in a terminal, then
-  generate again.
-- **"The Claude Code CLI wasn't found"**: install it (step 2 above), then restart
-  Resume Studio so it picks up the new PATH.
-- **No PDF, only a .docx**: PDF export needs Microsoft Word on Windows.
-- **A file is "locked, most likely open in Word"**: close it in Word and retry.
-- **The page says the web app hasn't been built**: run the launcher again (it builds
-  automatically when Node.js is installed), or `npm run build` in `webapp/frontend`.
+Double-click **`Doctor.bat`** for a plain-English checklist. It hides your user name, so it is
+safe to paste into a bug report.
+
+| What you see | What to do |
+|---|---|
+| "Python was not found" and the install failed | Install Python from python.org, tick **Add python.exe to PATH**, run the launcher again |
+| Windows blocks the file | **More info**, then **Run anyway** |
+| "Not signed in to Claude yet" banner | Run `claude auth login` in a terminal, or paste an API key in **Settings** |
+| "The Claude Code CLI wasn't found" | Close the window, double-click the launcher again, and press **Y** to install |
+| No PDF, only a `.docx` | PDF export needs Microsoft Word; the Word file is complete |
+| A file is "locked, most likely open in Word" | Close it in Word and try again |
+| The launcher window closes right away | Move the folder to a short path like `C:\ResumeStudio` and try again |
+| Antivirus quarantines a file | The app only opens local web pages on 127.0.0.1. Allow the folder, or ask for help in an issue |
+
+## For developers
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how it works, command-line use, tests, and rebuilding
+the web app, and [CLAUDE.md](CLAUDE.md) for internals.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
