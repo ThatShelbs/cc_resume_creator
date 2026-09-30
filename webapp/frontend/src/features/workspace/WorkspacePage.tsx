@@ -572,7 +572,7 @@ function EditableTitle({ value, onSave }: { value: string; onSave: (v: string) =
       className="group flex max-w-full items-center gap-2 rounded-md text-left"
       title="Rename"
     >
-      <h1 className="truncate text-xl font-semibold tracking-tight sm:text-2xl">{value}</h1>
+      <h1 className="line-clamp-2 break-words text-xl font-semibold tracking-tight sm:text-2xl">{value}</h1>
       <PenLine className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
     </button>
   );

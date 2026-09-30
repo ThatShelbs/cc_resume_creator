@@ -33,6 +33,7 @@ def remove_tree(p: Path, quiet: bool = False) -> None:
         os.chmod(path, stat.S_IWRITE)
         func(path)
 
+    p = long_path(p)  # files deeper than MAX_PATH can't be deleted otherwise
     for attempt in range(5):
         try:
             if p.exists():
@@ -57,6 +58,12 @@ def plain_path(p: Path) -> Path:
 @dataclass(frozen=True)
 class Paths:
     data_root: Path
+
+    def __post_init__(self):
+        # Every path derived from here is extended-length on Windows, so a
+        # deep data folder can't hit MAX_PATH. Anything handed to Word or
+        # shown to the user goes through plain_path() first.
+        object.__setattr__(self, "data_root", long_path(Path(self.data_root)))
 
     @property
     def input_dir(self) -> Path:
