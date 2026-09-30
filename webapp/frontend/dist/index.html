@@ -13,14 +13,6 @@
       // the wrong colors. Mirrors src/lib/theme.tsx.
       (function () {
         try {
-          // One-time carry-over of settings saved under the app's old name.
-          ["theme", "sidebar-collapsed", "dismissed-word-banner"].forEach(function (k) {
-            var old = localStorage.getItem("studio-" + k);
-            if (old !== null) {
-              if (localStorage.getItem("taylor-" + k) === null) localStorage.setItem("taylor-" + k, old);
-              localStorage.removeItem("studio-" + k);
-            }
-          });
           var pref = localStorage.getItem("taylor-theme") || "system";
           var dark = pref === "dark" || (pref === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
           document.documentElement.classList.toggle("dark", dark);

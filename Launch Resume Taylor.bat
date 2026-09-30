@@ -124,10 +124,7 @@ exit /b 0
 rem A saved API key (in .env or the app) means no login is needed.
 findstr /b /r /c:"ANTHROPIC_API_KEY=sk-" ".env" >nul 2>nul
 if not errorlevel 1 exit /b 0
-if exist "secrets.json" exit /b 0
 if exist "%LOCALAPPDATA%\ResumeTaylor\secrets.json" exit /b 0
-rem Data from before the rename (the app moves this folder on first start).
-if exist "%LOCALAPPDATA%\ResumeStudio\secrets.json" exit /b 0
 claude auth status 2>nul | findstr /c:"\"loggedIn\": true" >nul
 if not errorlevel 1 exit /b 0
 echo.

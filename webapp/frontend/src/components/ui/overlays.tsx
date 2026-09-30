@@ -24,8 +24,6 @@ const popContent =
 // ---- Dialog ---------------------------------------------------------------------
 
 export const Dialog = DialogPrimitive.Root;
-export const DialogTrigger = DialogPrimitive.Trigger;
-export const DialogClose = DialogPrimitive.Close;
 
 export const DialogContent = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Content>,
@@ -55,9 +53,6 @@ DialogContent.displayName = "DialogContent";
 
 export const DialogHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
   <div className={cn("flex flex-col gap-1.5 pr-6", className)} {...props} />
-);
-export const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("flex flex-col-reverse gap-2 sm:flex-row sm:justify-end", className)} {...props} />
 );
 export const DialogTitle = React.forwardRef<
   React.ElementRef<typeof DialogPrimitive.Title>,
@@ -105,7 +100,6 @@ SheetContent.displayName = "SheetContent";
 // ---- AlertDialog ------------------------------------------------------------------------
 
 export const AlertDialog = AlertDialogPrimitive.Root;
-export const AlertDialogTrigger = AlertDialogPrimitive.Trigger;
 
 export function AlertDialogContent({
   title,
@@ -253,7 +247,6 @@ export const HoverCardContent = React.forwardRef<
 HoverCardContent.displayName = "HoverCardContent";
 
 export const Popover = PopoverPrimitive.Root;
-export const PopoverTrigger = PopoverPrimitive.Trigger;
 export const PopoverContent = React.forwardRef<
   React.ElementRef<typeof PopoverPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof PopoverPrimitive.Content>

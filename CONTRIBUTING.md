@@ -27,7 +27,6 @@ cd webapp/frontend && npm install && npm run check
 
 No test makes a Claude call; the API tests swap in a fake pipeline script.
 
-
 The web app is shipped prebuilt in `webapp/frontend/dist` so that end users do not
 need Node.js. **After changing anything in `webapp/frontend/src`, run `npm run build`
 and commit the updated `dist/`** (CI fails if it is stale). The launcher rebuilds

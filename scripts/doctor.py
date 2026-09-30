@@ -101,9 +101,6 @@ def main() -> int:
     line(word, "Microsoft Word (only needed for PDF)", "" if word else "without it you still get .docx files")
 
     line(data_root.exists(), "Your data folder", str(data_root))
-    legacy = [n for n in ("resume_input", "projects") if (ROOT / n).is_dir() and any(p for p in (ROOT / n).iterdir() if p.name != ".gitkeep")]
-    if legacy:
-        line(None, "Old personal files inside the code folder", "they move to your data folder on the next launch")
 
     port_taken = False
     with socket.socket() as s:

@@ -191,16 +191,10 @@ def main() -> None:
 
     say(BANNER)
     check_python()
-    from taylor.paths import default_data_root, legacy_data_in_code_folder, migrate_legacy_data
+    from taylor.paths import default_data_root
 
     data_root = (args.data_root or default_data_root()).resolve()
     data_root.mkdir(parents=True, exist_ok=True)
-    if not args.data_root and legacy_data_in_code_folder():
-        # An older version kept personal files next to the code. Move them out
-        # so they can never end up in a git commit or a re-download.
-        moved = migrate_legacy_data(data_root)
-        if moved:
-            say(f"  Moved your existing files ({', '.join(moved)}) to {data_root}")
 
     existing = running_port(data_root)
     if existing and not args.dev:
