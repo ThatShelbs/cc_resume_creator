@@ -19,6 +19,20 @@ resume_archive/*
 .studio_tmp/
 /.venv/
 webapp/frontend/node_modules/
-webapp/frontend/dist/
+# webapp/frontend/dist/ IS committed: it is the prebuilt web app, so users need no Node.js.
 webapp/frontend/openapi.json
 webapp/frontend/.build-hash
+
+# Personal never-claim list (a starter is tracked as do_not_claim.example.txt)
+/do_not_claim.txt
+/secrets.json
+/setup.log
+
+# Safety net: no resumes or PDFs get committed by accident. Sample files that
+# are meant to ship live in examples/ and docs/ and are allowed below.
+*.docx
+*.pdf
+!examples/**/*.docx
+!examples/*.docx
+!docs/**
+!.env.example

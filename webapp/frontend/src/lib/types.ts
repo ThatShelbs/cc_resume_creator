@@ -19,9 +19,17 @@ export interface TemplateInfo {
   description: string;
 }
 
+export interface ApiKeyStatus {
+  set: boolean;
+  source: "app" | "env" | null;
+  last4: string | null;
+}
+
 export interface SystemInfo {
   version: string;
-  claude: { found: boolean; path: string | null; version: string | null };
+  claude: { found: boolean; path: string | null; version: string | null; logged_in: boolean | null; method: string | null };
+  api_key: ApiKeyStatus;
+  sample_loaded: boolean;
   word: boolean;
   platform: string;
   data_root: string;

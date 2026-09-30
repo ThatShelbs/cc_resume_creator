@@ -26,7 +26,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
-from . import CODE_ROOT
+from . import CODE_ROOT, credentials
 
 MAX_LINES = 4000
 MAX_JOBS_KEPT = 60

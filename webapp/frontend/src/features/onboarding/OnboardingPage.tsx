@@ -121,6 +121,17 @@ function StepHeader({ eyebrow, title, children }: { eyebrow: string; title: stri
 }
 
 function Welcome({ onNext }: { onNext: () => void }) {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
+  const sample = useMutation({
+    mutationFn: () => api.post("/api/demo/load"),
+    onSuccess: async () => {
+      await qc.invalidateQueries();
+      toast.success("Sample data loaded. Clear it from the banner when you're ready for your own.");
+      navigate("/");
+    },
+    onError: (e: Error) => toast.error(e.message),
+  });
   const points = [
     { icon: FileText, title: "Your real history, nothing else", text: "Every bullet is selected and rephrased from your own resume and profile. Titles, employers, and dates are copied exactly." },
     { icon: ShieldCheck, title: "Checked before it's written", text: "Numbers are verified against your materials, bullets cite their facts, and a never-claim list blocks overreach." },
@@ -143,9 +154,18 @@ function Welcome({ onNext }: { onNext: () => void }) {
           </Card>
         ))}
       </div>
-      <Button variant="gradient" size="lg" className="mt-8" onClick={onNext}>
-        Get started <ArrowRight />
-      </Button>
+      <div className="mt-8 flex flex-wrap items-center gap-3">
+        <Button variant="gradient" size="lg" onClick={onNext}>
+          Get started <ArrowRight />
+        </Button>
+        <Button variant="outline" size="lg" disabled={sample.isPending} onClick={() => sample.mutate()}>
+          <Sparkles /> {sample.isPending ? "Loading sample..." : "Try it with sample data"}
+        </Button>
+      </div>
+      <p className="mt-3 max-w-xl text-xs text-muted-foreground">
+        The sample is a made-up applicant (Jordan Rivera) with a profile, resume, and three example jobs, so you can look around
+        without entering anything about yourself. You can remove it at any time.
+      </p>
     </div>
   );
 }

@@ -26,6 +26,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, PlainTex
 from pydantic import BaseModel
 
 from . import CODE_ROOT, __version__
+from . import credentials, demo
 from . import facts as facts_mod
 from . import lint as lint_mod
 from . import profile_store, resume_ingest
@@ -109,6 +110,10 @@ class ImportBody(BaseModel):
     files: list[str]
 
 
+class ApiKeyBody(BaseModel):
+    key: str
+
+
 class OpenFolderBody(BaseModel):
     target: str = "data"
 
@@ -121,6 +126,8 @@ class OpenFolderBody(BaseModel):
 def create_app(paths: Paths, token: str, *, extra_hosts: set | None = None,
                jobs: JobManager | None = None) -> FastAPI:
     paths.ensure()
+    if not paths.deny_path.exists() and (CODE_ROOT / "do_not_claim.example.txt").exists():
+        shutil.copy(CODE_ROOT / "do_not_claim.example.txt", paths.deny_path)  # starter never-claim list
     store = ProjectStore(paths.projects_dir, paths.trash_dir)
     jobs = jobs or JobManager()
     allowed_hosts = LOOPBACK_HOSTS | (extra_hosts or set())
@@ -169,6 +176,16 @@ def create_app(paths: Paths, token: str, *, extra_hosts: set | None = None,
 
     def settings() -> Settings:
         return load_settings(paths.settings_path)
+
+    def job_env(s: Settings) -> dict:
+        """Extra environment for a pipeline subprocess: the timeout, plus the
+        API key when the user saved one in Settings (else .env or the CLI
+        login decides)."""
+        env = {"CLAUDE_TIMEOUT": str(s.timeout_seconds)}
+        key = credentials.load_key(paths.secrets_path)
+        if key:
+            env["ANTHROPIC_API_KEY"] = key
+        return env
 
     def profile_path() -> Path | None:
         return paths.latest("in_profile")
@@ -318,7 +335,7 @@ def create_app(paths: Paths, token: str, *, extra_hosts: set | None = None,
                 project_id=pid,
                 timeout=(240 if render else s.timeout_seconds * 4 + 300),
                 log_path=store.dir(pid) / "run.log",
-                env={"CLAUDE_TIMEOUT": str(s.timeout_seconds)},
+                env=job_env(s),
                 on_success=on_success,
                 on_finish=on_finish,
             )
@@ -365,6 +382,25 @@ def create_app(paths: Paths, token: str, *, extra_hosts: set | None = None,
         cache["claude"] = {"at": time.time(), "info": info}
         return info
 
+    def claude_login() -> dict:
+        """Whether the CLI is signed in (`claude auth status`). Short cache so
+        the banner clears soon after the user signs in."""
+        cached = cache.get("login")
+        if cached and time.time() - cached["at"] < 20:
+            return cached["info"]
+        info = {"logged_in": None, "method": None}
+        path = shutil.which("claude")
+        if path:
+            try:
+                out = subprocess.run([path, "auth", "status"], capture_output=True, text=True, timeout=20,
+                                     creationflags=0x08000000 if sys.platform == "win32" else 0)
+                data = json.loads(out.stdout or "{}")
+                info = {"logged_in": bool(data.get("loggedIn")), "method": data.get("authMethod")}
+            except (OSError, subprocess.TimeoutExpired, ValueError):
+                pass
+        cache["login"] = {"at": time.time(), "info": info}
+        return info
+
     def word_available() -> bool:
         if sys.platform != "win32":
             return False
@@ -394,7 +430,9 @@ def create_app(paths: Paths, token: str, *, extra_hosts: set | None = None,
         deny_count = len([r for r in facts_mod.check_deny_text(facts_mod.read_deny_text(paths.deny_path)) if not r["error"]])
         return {
             "version": __version__,
-            "claude": claude_info(),
+            "claude": {**claude_info(), **claude_login()},
+            "api_key": credentials.status(paths.secrets_path),
+            "sample_loaded": demo.is_loaded(paths),
             "word": word_available(),
             "platform": sys.platform,
             "data_root": str(plain_path(paths.data_root)),
@@ -422,6 +460,63 @@ def create_app(paths: Paths, token: str, *, extra_hosts: set | None = None,
     def put_settings(body: Settings):
         save_settings(paths.settings_path, body)
         return body
+
+    @app.get("/api/settings/api-key")
+    def get_api_key():
+        return credentials.status(paths.secrets_path)
+
+    @app.put("/api/settings/api-key")
+    def put_api_key(body: ApiKeyBody):
+        try:
+            credentials.save_key(paths.secrets_path, body.key)
+        except credentials.BadKey as exc:
+            raise HTTPException(400, str(exc)) from None
+        cache.pop("login", None)
+        return credentials.status(paths.secrets_path)
+
+    @app.delete("/api/settings/api-key")
+    def delete_api_key():
+        credentials.clear_key(paths.secrets_path)
+        return credentials.status(paths.secrets_path)
+
+    @app.post("/api/demo/load")
+    def load_demo():
+        if jobs.active():
+            raise HTTPException(409, "Wait for the running task to finish first.")
+        try:
+            demo.load_sample(paths)
+        except demo.SampleError as exc:
+            raise HTTPException(409, str(exc)) from None
+        cache.pop("ctx_key", None)
+        return {"ok": True}
+
+    @app.post("/api/demo/clear")
+    def clear_demo():
+        if jobs.active():
+            raise HTTPException(409, "Wait for the running task to finish first.")
+        try:
+            result = demo.clear_sample(paths)
+        except demo.SampleError as exc:
+            raise HTTPException(409, str(exc)) from None
+        cache.pop("ctx_key", None)
+        return result
+
+    @app.post("/api/system/backup")
+    def backup_data():
+        """Zip the user's inputs, projects and settings (never the API key)."""
+        import zipfile
+
+        dest = plain_path(paths.data_root) / f"ResumeStudio-backup-{datetime.now():%Y-%m-%d-%H-%M-%S}.zip"
+        with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as z:
+            for sub in (paths.input_dir, paths.projects_dir):
+                for f in plain_path(sub).rglob("*"):
+                    if f.is_file() and "_trash" not in f.parts:
+                        z.write(f, f.relative_to(plain_path(paths.data_root)))
+            for f in (paths.deny_path, paths.settings_path):
+                if f.exists():
+                    z.write(plain_path(f), f.name)
+        open_path(dest.parent)
+        return {"path": str(dest)}
 
     @app.post("/api/system/open-folder")
     def open_folder(body: OpenFolderBody):
@@ -550,7 +645,7 @@ def create_app(paths: Paths, token: str, *, extra_hosts: set | None = None,
             "ingest", "Structuring your resume with Claude",
             ["-m", "studio.resume_ingest", "--ai", str(upload["path"]), "--out", str(out)],
             timeout=s.timeout_seconds * 2 + 60,
-            env={"CLAUDE_TIMEOUT": str(s.timeout_seconds)},
+            env=job_env(s),
             on_success=on_success,
         )
         return job.summary()
@@ -631,7 +726,7 @@ def create_app(paths: Paths, token: str, *, extra_hosts: set | None = None,
             job = jobs.submit(
                 "fact_bank", "Drafting your fact bank", args,
                 timeout=s.timeout_seconds * 3 + 60,
-                env={"CLAUDE_TIMEOUT": str(s.timeout_seconds)},
+                env=job_env(s),
                 on_success=lambda _job: cache.pop("ctx_key", None),
             )
         except RuntimeError as exc:

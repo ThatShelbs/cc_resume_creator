@@ -17,7 +17,9 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "examples"))
 
 import generate_resume as g  # noqa: E402
+from studio import credentials as credentials_mod  # noqa: E402
 from studio import facts as facts_mod  # noqa: E402
+from studio.api import create_app  # noqa: E402
 from studio import profile_store, resume_ingest  # noqa: E402
 from studio.jobs import JobManager  # noqa: E402
 from studio.lint import lint_result  # noqa: E402
@@ -45,7 +47,7 @@ def workspace(tmp_path):
     write_docx(demo_data.PROFILE, paths.input_dir / "in_profile.docx")
     write_docx(demo_data.RESUME, paths.input_dir / "in_resume_Jordan-Rivera.docx")
     paths.fact_bank_path.write_text(demo_data.FACT_BANK, encoding="utf-8")
-    shutil.copy(ROOT / "do_not_claim.txt", paths.deny_path)
+    shutil.copy(ROOT / "tests" / "deny_fixture.txt", paths.deny_path)
     return paths
 
 
@@ -494,3 +496,74 @@ def test_api_import_legacy_postings(client, workspace):
     assert candidates == [{"file": "in_job_example.txt", "company": "Example Co.", "role": "Director, Customer Analytics"}]
     assert len(client.post("/api/import", json={"files": ["in_job_example.txt"]}).json()["created"]) == 1
     assert client.get("/api/import/candidates").json() == []
+
+
+# ---------------------------------------------------------------------------
+# Portability: API key, sample data, data root
+# ---------------------------------------------------------------------------
+
+
+FAKE_KEY = "sk-ant-api03-" + "A1b2C3d4E5" * 3
+
+
+def _client(paths):
+    from fastapi.testclient import TestClient
+
+    app = create_app(paths, "tok", extra_hosts={"testserver"})
+    return TestClient(app, headers={"X-Studio-Token": "tok"})
+
+
+def test_api_key_is_never_returned_or_settings_leaked(workspace):
+    c = _client(workspace)
+    assert c.put("/api/settings/api-key", json={"key": "not a key"}).status_code == 400
+    r = c.put("/api/settings/api-key", json={"key": FAKE_KEY})
+    assert r.json() == {"set": True, "source": "app", "last4": FAKE_KEY[-4:]}
+    for url in ("/api/settings", "/api/system", "/api/settings/api-key"):
+        assert FAKE_KEY not in c.get(url).text
+    assert credentials_mod.load_key(workspace.secrets_path) == FAKE_KEY
+    assert c.delete("/api/settings/api-key").json()["set"] is False
+    assert not workspace.secrets_path.exists()
+
+
+def test_api_key_reaches_jobs_and_logs_are_redacted(workspace):
+    assert credentials_mod.redact(f"boom {FAKE_KEY} end") == "boom sk-ant-*** end"
+
+
+def test_generator_env_keeps_only_the_api_key(monkeypatch):
+    import generate_resume as g
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", FAKE_KEY)
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://example.invalid")
+    monkeypatch.setenv("CLAUDE_CODE_FOO", "1")
+    env = g._clean_subprocess_env()
+    assert env.get("ANTHROPIC_API_KEY") == FAKE_KEY
+    assert "ANTHROPIC_BASE_URL" not in env and "CLAUDE_CODE_FOO" not in env
+
+
+def test_default_data_root_is_outside_the_repo(monkeypatch, tmp_path):
+    from studio.paths import default_data_root
+
+    monkeypatch.delenv("RESUME_STUDIO_DATA", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    assert default_data_root() == tmp_path / "ResumeStudio"
+    monkeypatch.setenv("RESUME_STUDIO_DATA", str(tmp_path / "mine"))
+    assert default_data_root() == (tmp_path / "mine").resolve()
+
+
+def test_sample_data_loads_only_into_an_empty_folder_and_clears(tmp_path):
+    paths = Paths(tmp_path)
+    paths.ensure()
+    c = _client(paths)
+    assert c.get("/api/system").json()["onboarding_needed"] is True
+    assert c.post("/api/demo/load").status_code == 200
+    system = c.get("/api/system").json()
+    assert system["sample_loaded"] and not system["onboarding_needed"]
+    assert c.post("/api/demo/load").status_code == 409
+    assert c.post("/api/demo/clear").json()["backup"] is None
+    system = c.get("/api/system").json()
+    assert not system["sample_loaded"] and system["onboarding_needed"]
+    assert not [p for p in paths.projects_dir.iterdir() if p.is_dir() and not p.name.startswith("_")]
+
+
+def test_sample_data_refuses_to_mix_with_a_real_profile(workspace):
+    assert _client(workspace).post("/api/demo/load").status_code == 409

@@ -101,6 +101,8 @@ def run_npm(*args: str) -> None:
 
 
 def ensure_frontend(force: bool = False) -> None:
+    if not force and (DIST / "index.html").exists() and not (FRONTEND / "node_modules").exists():
+        return  # the shipped web app is used as is; only developers (who ran npm) rebuild
     current = frontend_hash()
     built = BUILD_STAMP.read_text().strip() if BUILD_STAMP.exists() else ""
     if not force and (DIST / "index.html").exists() and built == current:
@@ -179,7 +181,7 @@ def open_when_ready(port: int, url: str, open_browser: bool) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Start Resume Studio and open it in your browser.")
-    parser.add_argument("--data-root", type=Path, help="folder with resume_input/, projects/, ... (default: this folder)")
+    parser.add_argument("--data-root", type=Path, help="folder with resume_input/, projects/, ... (default: ResumeStudio in your local app data folder)")
     parser.add_argument("--port", type=int, default=8765, help="first port to try (default 8765)")
     parser.add_argument("--no-browser", action="store_true", help="don't open a browser tab")
     parser.add_argument("--rebuild", action="store_true", help="force a rebuild of the web app")
@@ -188,8 +190,16 @@ def main() -> None:
 
     say(BANNER)
     check_python()
-    data_root = (args.data_root or ROOT).resolve()
+    from studio.paths import default_data_root, legacy_data_in_code_folder, migrate_legacy_data
+
+    data_root = (args.data_root or default_data_root()).resolve()
     data_root.mkdir(parents=True, exist_ok=True)
+    if not args.data_root and legacy_data_in_code_folder():
+        # An older version kept personal files next to the code. Move them out
+        # so they can never end up in a git commit or a re-download.
+        moved = migrate_legacy_data(data_root)
+        if moved:
+            say(f"  Moved your existing files ({', '.join(moved)}) to {data_root}")
 
     existing = running_port(data_root)
     if existing and not args.dev:
