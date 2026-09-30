@@ -17,30 +17,32 @@ jobs:
       - run: python scripts/check_no_personal_data.py
       - run: python scripts/check_no_personal_data.py --history
 
-  python:
+  backend:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements-dev.txt
+      - run: pip install -e "backend[dev]"
+      - run: ruff check backend scripts examples
       - run: python -m pytest -q
+        working-directory: backend
 
   frontend:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: webapp/frontend
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: webapp/frontend/package-lock.json
+          cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run check
       - run: npm run build
       - name: Prebuilt web app must be up to date
-        run: test -z "$(git status --porcelain dist)" || (git status --porcelain dist; echo "Run npm run build and commit webapp/frontend/dist"; exit 1)
+        run: test -z "$(git status --porcelain dist)" || (git status --porcelain dist; echo "Run npm run build and commit frontend/dist"; exit 1)

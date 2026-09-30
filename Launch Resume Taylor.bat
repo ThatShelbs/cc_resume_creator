@@ -54,14 +54,14 @@ if not exist ".venv\Scripts\python.exe" (
 )
 set "VPY=.venv\Scripts\python.exe"
 
-rem Reinstall packages whenever requirements.txt changes.
+rem Reinstall packages whenever backend\pyproject.toml (the dependency list) changes.
 set "REQHASH="
-for /f "skip=1 delims=" %%H in ('certutil -hashfile requirements.txt SHA256') do if not defined REQHASH set "REQHASH=%%H"
+for /f "skip=1 delims=" %%H in ('certutil -hashfile backend\pyproject.toml SHA256') do if not defined REQHASH set "REQHASH=%%H"
 set "OLDHASH="
 if exist ".venv\.req-hash" set /p OLDHASH=<".venv\.req-hash"
 if not "%REQHASH%"=="%OLDHASH%" (
   echo            Installing packages. This happens once and takes a minute or two...
-  "%VPY%" -m pip install --disable-pip-version-check --quiet -r requirements.txt
+  "%VPY%" -m pip install --disable-pip-version-check --quiet -e backend
   if errorlevel 1 (
     echo.
     echo   Installing packages failed. Check your internet connection and try again.

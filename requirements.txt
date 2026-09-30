@@ -1,9 +1,0 @@
-python-docx
-docx2pdf
-pywin32; sys_platform == "win32"
-python-dotenv
-pyyaml
-pypdf
-fastapi
-uvicorn[standard]
-python-multipart

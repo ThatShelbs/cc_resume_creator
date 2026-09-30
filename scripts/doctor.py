@@ -13,7 +13,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+# The doctor must work even when the package isn't installed (that may be the very problem).
+sys.path.insert(0, str(ROOT / "backend" / "src"))
 
 HOME = str(Path.home())
 
@@ -55,8 +56,8 @@ def main() -> int:
     line(not missing, "Python packages", ", ".join(missing) and f"missing: {', '.join(missing)}")
     problems += bool(missing)
 
-    dist = ROOT / "webapp" / "frontend" / "dist" / "index.html"
-    line(dist.exists(), "Web app files (webapp/frontend/dist)")
+    dist = ROOT / "frontend" / "dist" / "index.html"
+    line(dist.exists(), "Web app files (frontend/dist)")
     problems += not dist.exists()
 
     claude = shutil.which("claude") or shutil.which("claude", path=str(Path.home() / ".local" / "bin"))
@@ -70,7 +71,7 @@ def main() -> int:
     except ImportError:
         pass
 
-    from taylor.paths import default_data_root
+    from resume_taylor.app.storage.paths import default_data_root
 
     data_root = default_data_root()
     saved_key = (data_root / "secrets.json").exists()

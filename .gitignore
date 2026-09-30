@@ -1,6 +1,9 @@
 .env
 __pycache__/
 *.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
 .claude/settings.local.json
 
 # Personal career data: never commit. Folders are kept via .gitkeep.
@@ -18,10 +21,10 @@ resume_archive/*
 .taylor_port
 .taylor_tmp/
 /.venv/
-webapp/frontend/node_modules/
-# webapp/frontend/dist/ IS committed: it is the prebuilt web app, so users need no Node.js.
-webapp/frontend/openapi.json
-webapp/frontend/.build-hash
+frontend/node_modules/
+# frontend/dist/ IS committed: it is the prebuilt web app, so users need no Node.js.
+frontend/openapi.json
+frontend/.build-hash
 
 # Personal never-claim list (a starter is tracked as do_not_claim.example.txt)
 /do_not_claim.txt
