@@ -10,6 +10,7 @@ export default {
     extend: {
       fontFamily: {
         sans: ['"Inter Variable"', "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        display: ['"Fraunces Variable"', "Fraunces", "Georgia", "ui-serif", "serif"],
       },
       colors: {
         border: "hsl(var(--border))",
@@ -23,6 +24,19 @@ export default {
         destructive: { DEFAULT: "hsl(var(--destructive))", foreground: "hsl(var(--destructive-foreground))" },
         success: { DEFAULT: "hsl(var(--success))", foreground: "hsl(var(--success-foreground))" },
         warning: { DEFAULT: "hsl(var(--warning))", foreground: "hsl(var(--warning-foreground))" },
+        info: "hsl(var(--info))",
+        brand: {
+          navy: "hsl(var(--brand-navy))",
+          sage: "hsl(var(--brand-sage))",
+          gold: "hsl(var(--brand-gold))",
+          lilac: "hsl(var(--brand-lilac))",
+          burgundy: "hsl(var(--brand-burgundy))",
+          sky: "hsl(var(--brand-sky))",
+          gray: "hsl(var(--brand-gray))",
+          pink: "hsl(var(--brand-pink))",
+          stone: "hsl(var(--brand-stone))",
+          tan: "hsl(var(--brand-tan))",
+        },
         muted: { DEFAULT: "hsl(var(--muted))", foreground: "hsl(var(--muted-foreground))" },
         accent: { DEFAULT: "hsl(var(--accent))", foreground: "hsl(var(--accent-foreground))" },
         popover: { DEFAULT: "hsl(var(--popover))", foreground: "hsl(var(--popover-foreground))" },
@@ -56,6 +70,7 @@ export default {
         "accordion-up": "accordion-up 0.2s ease-out",
         shimmer: "shimmer 1.6s infinite",
         "pulse-ring": "pulse-ring 1.4s cubic-bezier(0.2, 0.6, 0.4, 1) infinite",
+        twinkle: "twinkle 2.8s ease-in-out infinite",
       },
     },
   },

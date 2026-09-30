@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, BookCheck, Check, FileText, PartyPopper, Plus, S
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { BeadBracelet, Sequins } from "@/components/brand";
 import { Logo } from "@/components/common";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { Button } from "@/components/ui/button";
@@ -139,7 +140,8 @@ function Welcome({ onNext }: { onNext: () => void }) {
   ];
   return (
     <div>
-      <StepHeader eyebrow="Welcome to Resume Studio" title="Truthful resumes, tailored to every job">
+      <BeadBracelet text="tailored" className="mb-5" />
+      <StepHeader eyebrow="Welcome to Resume Taylor" title="Truthful resumes, tailored to every job">
         Setup takes about two minutes: upload the resume you already have, confirm your profile, and you're ready to paste your first
         job posting.
       </StepHeader>
@@ -304,16 +306,18 @@ function DoneStep() {
   const ready = !system?.onboarding_needed;
   return (
     <div className="grid place-items-center py-10 text-center">
-      <div className="relative">
-        <div className="absolute inset-0 rounded-full bg-primary/25 blur-2xl" />
-        <div className="relative flex size-16 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-lift">
+      <div className="relative px-10 py-6">
+        <Sequins />
+        <div className="absolute inset-6 rounded-full bg-primary/25 blur-2xl" />
+        <div className="bg-brand-gradient relative flex size-16 items-center justify-center rounded-2xl shadow-lift">
           <PartyPopper className="size-7" />
         </div>
       </div>
-      <h1 className="mt-6 text-2xl font-semibold tracking-tight">{ready ? "You're all set" : "Almost there"}</h1>
+      <BeadBracelet text={ready ? "ready" : "almost"} size="sm" className="mt-2" />
+      <h1 className="mt-5 text-2xl font-semibold tracking-tight">{ready ? "You're all set" : "Almost there"}</h1>
       <p className="mt-2 max-w-md text-sm leading-relaxed text-muted-foreground">
         {ready
-          ? "Paste a job posting and Resume Studio will tailor your resume to it in a minute or two."
+          ? "Paste a job posting and Resume Taylor will tailor your resume to it in a minute or two."
           : "Add your base resume and profile to start generating. You can still create projects in the meantime."}
       </p>
       <div className="mt-8 flex flex-wrap justify-center gap-2">

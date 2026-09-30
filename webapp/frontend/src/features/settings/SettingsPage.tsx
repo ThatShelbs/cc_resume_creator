@@ -52,7 +52,7 @@ export default function SettingsPage() {
     return (
       <div className="mx-auto max-w-lg px-6 pt-24 text-center">
         <Power className="mx-auto size-8 text-muted-foreground" />
-        <h1 className="mt-4 text-xl font-semibold">Resume Studio has stopped</h1>
+        <h1 className="mt-4 text-xl font-semibold">Resume Taylor has stopped</h1>
         <p className="mt-2 text-sm text-muted-foreground">You can close this tab. Run the launcher again whenever you need it.</p>
       </div>
     );
@@ -185,7 +185,7 @@ export default function SettingsPage() {
             </Button>
           </div>
         </Row>
-        <Row title="About" description={`Resume Studio ${system?.version ?? ""}`}>
+        <Row title="About" description={`Resume Taylor ${system?.version ?? ""}`}>
           <div className="flex flex-wrap gap-2">
             <Button asChild size="sm" variant="outline">
               <a href={withToken("/api/docs")} target="_blank" rel="noreferrer">
@@ -193,7 +193,7 @@ export default function SettingsPage() {
               </a>
             </Button>
             <Button size="sm" variant="outline" className="text-destructive hover:text-destructive" onClick={() => setQuit(true)}>
-              <Power /> Quit Resume Studio
+              <Power /> Quit Resume Taylor
             </Button>
           </div>
         </Row>
@@ -202,7 +202,7 @@ export default function SettingsPage() {
 
       <AlertDialog open={quit} onOpenChange={setQuit}>
         <AlertDialogContent
-          title="Quit Resume Studio?"
+          title="Quit Resume Taylor?"
           description="This stops the local server. Any running generation is stopped too. Start it again from the launcher."
           confirmLabel="Quit"
           destructive

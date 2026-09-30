@@ -19,6 +19,7 @@ import {
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { Sequins } from "@/components/brand";
 import { Callout, EmptyState, Monogram, PageHeader, STATUS_META, StatusBadge } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import {
@@ -160,7 +161,7 @@ export function ProjectsPage() {
           <EmptyState
             icon={Briefcase}
             title="Start your first project"
-            description="Paste a job posting and Resume Studio tailors your real experience to it. Nothing is invented: every bullet traces back to your own materials."
+            description="Paste a job posting and Resume Taylor tailors your real experience to it. Nothing is invented: every bullet traces back to your own materials."
             action={
               <Button asChild variant="gradient">
                 <Link to="/projects/new">
@@ -194,13 +195,15 @@ function SetupCard({ profile, resume }: { profile: boolean; resume: boolean }) {
   ];
   return (
     <Card className="relative mt-6 overflow-hidden border-primary/25">
-      <div className="absolute inset-0 bg-gradient-to-br from-indigo-500/[0.08] via-violet-500/[0.05] to-transparent" />
+      <div className="absolute inset-0 bg-gradient-to-br from-brand-pink/[0.16] via-brand-lilac/[0.08] to-transparent" />
+      <div className="bead-rule absolute inset-x-0 top-0 h-[3px]" />
+      <Sequins count={3} />
       <div className="relative flex flex-col gap-5 p-6 md:flex-row md:items-center">
-        <div className="flex size-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-lift">
+        <div className="bg-brand-gradient flex size-12 shrink-0 items-center justify-center rounded-2xl shadow-lift">
           <Sparkles className="size-5" />
         </div>
         <div className="flex-1">
-          <h2 className="text-base font-semibold tracking-tight">Set up Resume Studio in about two minutes</h2>
+          <h2 className="text-base font-semibold tracking-tight">Set up Resume Taylor in about two minutes</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             Your base resume and profile are the only source material the tailoring can draw from.
           </p>

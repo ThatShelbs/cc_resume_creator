@@ -3,73 +3,91 @@
 @tailwind utilities;
 
 /* Design tokens. Every color in the UI comes from these, so the day and night
-   themes are two sets of values, not two stylesheets. */
+   themes are two sets of values, not two stylesheets.
+
+   The Resume Taylor palette (see docs/brand/BRAND.md): midnight navy,
+   burgundy, sage, gold, lilac, sky, pink, stone, tan, and a warm gray. The
+   --brand-* swatches are the raw colors and never change with the theme; the
+   semantic tokens below are tuned from them for contrast in each theme. */
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 8%;
-    --canvas: 240 6% 97.3%;
-    --card: 0 0% 100%;
-    --card-foreground: 240 10% 8%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 240 10% 8%;
-    --primary: 243 75% 58%;
+    --brand-navy: 228 27% 28%; /* #343C5B */
+    --brand-sage: 112 26% 78%; /* #BDD6B9 */
+    --brand-gold: 36 85% 76%; /* #F6CC8F */
+    --brand-lilac: 298 25% 76%; /* #D0B3D1 */
+    --brand-burgundy: 349 41% 37%; /* #843745 */
+    --brand-sky: 196 74% 86%; /* #C2E8F6 */
+    --brand-gray: 0 3% 47%; /* #7A7474 */
+    --brand-pink: 336 81% 86%; /* #F8BDD5 */
+    --brand-stone: 38 11% 81%; /* #D3CFC8 */
+    --brand-tan: 31 35% 70%; /* #CEB499 */
+
+    --background: 40 33% 99.2%;
+    --foreground: 228 27% 16%;
+    --canvas: 38 22% 96.2%;
+    --card: 40 33% 99.6%;
+    --card-foreground: 228 27% 16%;
+    --popover: 40 33% 99.6%;
+    --popover-foreground: 228 27% 16%;
+    --primary: 349 41% 37%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 240 5% 95%;
-    --secondary-foreground: 240 6% 12%;
-    --muted: 240 5% 95.5%;
-    --muted-foreground: 240 4% 40%;
-    --accent: 243 90% 97%;
-    --accent-foreground: 243 60% 38%;
-    --destructive: 0 72% 50%;
+    --secondary: 38 16% 93.5%;
+    --secondary-foreground: 228 27% 20%;
+    --muted: 38 16% 94%;
+    --muted-foreground: 0 3% 40%;
+    --accent: 336 70% 96%;
+    --accent-foreground: 349 41% 32%;
+    --destructive: 356 66% 45%;
     --destructive-foreground: 0 0% 100%;
-    --success: 152 62% 34%;
+    --success: 112 28% 30%;
     --success-foreground: 0 0% 100%;
-    --warning: 35 92% 42%;
+    --warning: 32 76% 34%;
     --warning-foreground: 0 0% 100%;
-    --border: 240 6% 90%;
-    --input: 240 6% 87%;
-    --ring: 243 75% 58%;
+    --info: 196 60% 32%;
+    --border: 38 13% 87%;
+    --input: 38 11% 81%;
+    --ring: 349 41% 37%;
     --radius: 0.625rem;
-    --shadow: 240 20% 12%;
-    --sidebar: 240 6% 97.3%;
-    --sidebar-foreground: 240 6% 20%;
-    --sidebar-accent: 240 6% 92%;
-    --sidebar-border: 240 6% 91%;
-    --paper-canvas: 240 5% 92%;
+    --shadow: 228 30% 14%;
+    --sidebar: 38 22% 95.4%;
+    --sidebar-foreground: 228 20% 24%;
+    --sidebar-accent: 38 16% 90%;
+    --sidebar-border: 38 13% 88%;
+    --paper-canvas: 31 20% 90%;
   }
 
   .dark {
-    --background: 240 7% 8%;
-    --foreground: 240 6% 94%;
-    --canvas: 240 8% 5.5%;
-    --card: 240 6% 9.5%;
-    --card-foreground: 240 6% 94%;
-    --popover: 240 6% 10.5%;
-    --popover-foreground: 240 6% 94%;
-    --primary: 239 84% 70%;
-    --primary-foreground: 240 30% 8%;
-    --secondary: 240 5% 15%;
-    --secondary-foreground: 240 6% 92%;
-    --muted: 240 5% 14%;
-    --muted-foreground: 240 5% 66%;
-    --accent: 243 40% 18%;
-    --accent-foreground: 240 90% 88%;
-    --destructive: 0 72% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --success: 152 55% 50%;
-    --success-foreground: 150 40% 8%;
-    --warning: 38 92% 58%;
-    --warning-foreground: 35 60% 8%;
-    --border: 240 5% 17%;
-    --input: 240 5% 21%;
-    --ring: 239 84% 70%;
-    --shadow: 240 40% 2%;
-    --sidebar: 240 8% 6.5%;
-    --sidebar-foreground: 240 5% 82%;
-    --sidebar-accent: 240 5% 13%;
-    --sidebar-border: 240 5% 13%;
-    --paper-canvas: 240 6% 12%;
+    --background: 228 30% 9%;
+    --foreground: 38 25% 93%;
+    --canvas: 228 32% 6.5%;
+    --card: 228 27% 11%;
+    --card-foreground: 38 25% 93%;
+    --popover: 228 27% 12%;
+    --popover-foreground: 38 25% 93%;
+    --primary: 336 81% 86%;
+    --primary-foreground: 228 30% 12%;
+    --secondary: 228 20% 16%;
+    --secondary-foreground: 38 20% 90%;
+    --muted: 228 20% 15%;
+    --muted-foreground: 38 8% 68%;
+    --accent: 298 18% 20%;
+    --accent-foreground: 298 30% 88%;
+    --destructive: 356 72% 66%;
+    --destructive-foreground: 228 30% 8%;
+    --success: 112 26% 72%;
+    --success-foreground: 228 30% 8%;
+    --warning: 36 85% 72%;
+    --warning-foreground: 228 30% 8%;
+    --info: 196 74% 80%;
+    --border: 228 18% 19%;
+    --input: 228 16% 24%;
+    --ring: 336 81% 86%;
+    --shadow: 228 40% 3%;
+    --sidebar: 228 32% 7.5%;
+    --sidebar-foreground: 38 15% 82%;
+    --sidebar-accent: 228 20% 14%;
+    --sidebar-border: 228 20% 13%;
+    --paper-canvas: 228 20% 13%;
   }
 
   * {
@@ -124,6 +142,51 @@
 
   .text-balance {
     text-wrap: balance;
+  }
+
+  /* The signature gradient: navy into burgundy by day, lilac into pink by night. */
+  .bg-brand-gradient {
+    background-image: linear-gradient(135deg, hsl(var(--brand-navy)), hsl(var(--brand-burgundy)));
+    color: #fff;
+  }
+  .dark .bg-brand-gradient {
+    background-image: linear-gradient(135deg, hsl(var(--brand-lilac)), hsl(var(--brand-pink)));
+    color: hsl(var(--brand-navy));
+  }
+
+  /* A sewn seam: dashed stitches set just inside the edge. */
+  .stitch {
+    outline: 1.5px dashed hsl(var(--primary) / 0.35);
+    outline-offset: -6px;
+  }
+
+  /* Hairline of palette beads, used as a divider or card accent. */
+  .bead-rule {
+    background-image: linear-gradient(
+      90deg,
+      hsl(var(--brand-sage)) 0 10%,
+      hsl(var(--brand-gold)) 10% 20%,
+      hsl(var(--brand-lilac)) 20% 30%,
+      hsl(var(--brand-sky)) 30% 40%,
+      hsl(var(--brand-pink)) 40% 50%,
+      hsl(var(--brand-tan)) 50% 60%,
+      hsl(var(--brand-sage)) 60% 70%,
+      hsl(var(--brand-gold)) 70% 80%,
+      hsl(var(--brand-lilac)) 80% 90%,
+      hsl(var(--brand-pink)) 90% 100%
+    );
+  }
+}
+
+@keyframes twinkle {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.8) rotate(0deg);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1) rotate(12deg);
   }
 }
 

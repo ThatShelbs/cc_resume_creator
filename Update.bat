@@ -1,5 +1,5 @@
 @echo off
-rem Gets the newest version of Resume Studio. Your resumes and settings live in
+rem Gets the newest version of Resume Taylor. Your resumes and settings live in
 rem a separate folder (see Settings, "Your data") and are never touched.
 setlocal
 cd /d "%~dp0"
@@ -7,8 +7,11 @@ if exist ".git" (
   where git >nul 2>nul
   if not errorlevel 1 (
     git pull --ff-only
+    rem The app was renamed from Resume Studio; point an old desktop shortcut at the new launcher.
+    if exist "%USERPROFILE%\Desktop\Resume Studio.lnk" powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\create_desktop_shortcut.ps1"
+    if exist "%USERPROFILE%\OneDrive\Desktop\Resume Studio.lnk" powershell -NoProfile -ExecutionPolicy Bypass -File "scripts\create_desktop_shortcut.ps1"
     echo.
-    echo   Updated. Double-click "Launch Resume Studio.bat" to start.
+    echo   Updated. Double-click "Launch Resume Taylor.bat" to start.
     pause
     exit /b 0
   )

@@ -3,7 +3,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 export type ThemePreference = "light" | "dark" | "system";
 export type ResolvedTheme = "light" | "dark";
 
-export const THEME_STORAGE_KEY = "studio-theme";
+export const THEME_STORAGE_KEY = "taylor-theme";
 
 interface ThemeContextValue {
   theme: ThemePreference;

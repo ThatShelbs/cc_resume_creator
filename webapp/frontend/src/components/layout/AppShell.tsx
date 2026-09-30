@@ -33,7 +33,7 @@ interface NavItem {
   badge?: ReactNode;
 }
 
-const COLLAPSE_KEY = "studio-sidebar-collapsed";
+const COLLAPSE_KEY = "taylor-sidebar-collapsed";
 
 function useCollapsed(): [boolean, (v: boolean) => void] {
   const [collapsed, setCollapsed] = useState(() => {
@@ -137,9 +137,10 @@ export function AppShell() {
   ];
 
   const sidebar = (mobile: boolean) => (
-    <div className="flex h-full flex-col gap-4 p-3">
+    <div className="relative flex h-full flex-col gap-4 p-3">
+      <div className="bead-rule absolute inset-x-0 top-0 h-[3px] opacity-90" aria-hidden />
       <div className={cn("flex h-10 items-center justify-between px-1", collapsed && !mobile && "justify-center px-0")}>
-        <Link to="/" aria-label="Resume Studio home">
+        <Link to="/" aria-label="Resume Taylor home">
           <Logo withText={mobile || !collapsed} />
         </Link>
         {mobile && (
