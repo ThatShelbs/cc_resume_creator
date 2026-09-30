@@ -1,5 +1,5 @@
 """
-Capture README screenshots of a running Resume Studio (use the fictional demo
+Capture README screenshots of a running Resume Taylor (use the fictional demo
 workspace, never real data) in light and dark, plus phone-width shots, and
 report any page that scrolls sideways on a phone.
 
@@ -22,12 +22,12 @@ PHONE_ROUTES = ["/", "/projects/new", "{workspace}", "/profile", "/resume", "/ev
 
 
 def token(page: Page) -> str:
-    return page.locator('meta[name="studio-token"]').get_attribute("content")
+    return page.locator('meta[name="taylor-token"]').get_attribute("content")
 
 
 def projects(page: Page) -> list:
     return page.evaluate(
-        """async (t) => (await fetch('/api/projects', {headers: {'X-Studio-Token': t}})).json()""", token(page)
+        """async (t) => (await fetch('/api/projects', {headers: {'X-Taylor-Token': t}})).json()""", token(page)
     )
 
 
@@ -48,7 +48,7 @@ def open_browser(p):
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Capture Resume Studio screenshots.")
+    parser = argparse.ArgumentParser(description="Capture Resume Taylor screenshots.")
     parser.add_argument("--url", default="http://127.0.0.1:8765")
     parser.add_argument("--out", type=Path, default=ROOT / "docs" / "screenshots")
     args = parser.parse_args()
@@ -59,7 +59,7 @@ def main() -> None:
         browser = open_browser(p)
         for theme in ("light", "dark"):
             ctx = browser.new_context(viewport={"width": 1440, "height": 900}, device_scale_factor=2, color_scheme=theme)
-            ctx.add_init_script(f"localStorage.setItem('studio-theme', '{theme}')")
+            ctx.add_init_script(f"localStorage.setItem('taylor-theme', '{theme}')")
             page = ctx.new_page()
             page.goto(args.url + "/")
             settle(page)
@@ -96,7 +96,7 @@ def main() -> None:
         # Phone width: screenshots plus a sideways-scroll check on every page.
         ctx = browser.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=3,
                                   is_mobile=True, has_touch=True, color_scheme="light")
-        ctx.add_init_script("localStorage.setItem('studio-theme', 'light')")
+        ctx.add_init_script("localStorage.setItem('taylor-theme', 'light')")
         page = ctx.new_page()
         page.goto(args.url + "/")
         settle(page)

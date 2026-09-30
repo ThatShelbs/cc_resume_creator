@@ -18,12 +18,14 @@ import {
   NotebookPen,
   PenLine,
   RefreshCcw,
+  Scissors,
   Sparkles,
   Trash2,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
+import { BeadBracelet, Sequins } from "@/components/brand";
 import { Callout, EmptyState, Monogram, STATUS_META, StatusBadge } from "@/components/common";
 import { Button } from "@/components/ui/button";
 import {
@@ -682,6 +684,12 @@ function RunningBanner({ job, onOpen }: { job: JobSummary; onOpen: () => void })
   );
 }
 
+/** The company's first word for the ready card's bracelet, letters only. */
+function braceletWord(company: string | null | undefined): string {
+  const word = (company ?? "").split(/\s+/)[0]?.replace(/[^\p{L}]/gu, "") ?? "";
+  return word.length >= 2 && word.length <= 9 ? word : "new job";
+}
+
 function ReadyCard({ project, running, disabled, onGenerate }: { project: Project; running: boolean; disabled?: boolean; onGenerate: () => void }) {
   const { data: system } = useSystem();
   const checks = useMemo(
@@ -701,10 +709,14 @@ function ReadyCard({ project, running, disabled, onGenerate }: { project: Projec
   );
   return (
     <Card className="relative overflow-hidden p-6 sm:p-8">
-      <div className="absolute -right-24 -top-24 size-64 rounded-full bg-gradient-to-br from-indigo-500/15 to-violet-500/10 blur-3xl" />
+      <div className="absolute -right-24 -top-24 size-64 rounded-full bg-gradient-to-br from-brand-pink/25 to-brand-lilac/15 blur-3xl" />
+      <Sequins count={3} />
       <div className="relative">
-        <div className="flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-violet-500 text-white shadow-lift">
-          <Sparkles className="size-5" />
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="bg-brand-gradient flex size-12 items-center justify-center rounded-2xl shadow-lift">
+            <Scissors className="size-5" />
+          </div>
+          <BeadBracelet text={braceletWord(project.company)} size="sm" />
         </div>
         <h2 className="mt-5 text-xl font-semibold tracking-tight">
           Ready to tailor {project.role ? `for ${project.role}` : "this resume"}

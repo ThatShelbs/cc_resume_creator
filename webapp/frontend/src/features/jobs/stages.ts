@@ -7,13 +7,13 @@ export interface StepDef {
 }
 
 const STEP_LIBRARY: Record<string, StepDef> = {
-  preparing: { key: "preparing", label: "Reading your materials", detail: "Profile, base resume, fact bank, and the posting" },
-  drafting: { key: "drafting", label: "Drafting with Claude", detail: "Tailoring the summary, bullets, and skills to this role" },
-  structuring: { key: "structuring", label: "Structuring the draft", detail: "Turning the draft into editable content" },
-  validating: { key: "validating", label: "Truthfulness checks", detail: "Citations, numbers, never-claim list, keyword coverage" },
+  preparing: { key: "preparing", label: "Taking measurements", detail: "Reading your profile, base resume, fact bank, and the posting" },
+  drafting: { key: "drafting", label: "Cutting the pattern", detail: "Claude tailors the summary, bullets, and skills to this role" },
+  structuring: { key: "structuring", label: "Pinning it together", detail: "Turning the draft into editable content" },
+  validating: { key: "validating", label: "Checking every seam", detail: "Citations, numbers, never-claim list, keyword coverage" },
   cover_letter: { key: "cover_letter", label: "Writing the cover letter", detail: "Built only from the validated resume content" },
-  rendering: { key: "rendering", label: "Laying out the document", detail: "Applying your template to a Word document" },
-  pdf: { key: "pdf", label: "Exporting the PDF", detail: "Microsoft Word renders the final PDF" },
+  rendering: { key: "rendering", label: "Stitching the document", detail: "Applying your template to a Word document" },
+  pdf: { key: "pdf", label: "Pressing the PDF", detail: "Microsoft Word renders the final PDF" },
 };
 
 export function stepsFor(job: Pick<JobSummary, "kind" | "stages_seen">, opts: { coverLetter?: boolean } = {}): StepDef[] {

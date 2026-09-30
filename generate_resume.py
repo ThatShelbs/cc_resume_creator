@@ -65,11 +65,11 @@ def warn(msg: str) -> None:
     WARNINGS.append(msg)
 
 
-# Resume Studio (the browser app) runs this script as a subprocess and sets
-# STUDIO_PROGRESS=1 so it can follow along. The "::stage <name>" lines it then
+# Resume Taylor (the browser app) runs this script as a subprocess and sets
+# TAYLOR_PROGRESS=1 so it can follow along. The "::stage <name>" lines it then
 # gets are a stable, machine-readable progress signal, so the app never has to
 # parse the human-facing messages. Plain CLI runs don't print them.
-PROGRESS_MARKERS = os.environ.get("STUDIO_PROGRESS") == "1"
+PROGRESS_MARKERS = os.environ.get("TAYLOR_PROGRESS") == "1"
 
 
 def stage(name: str) -> None:
@@ -163,7 +163,7 @@ PHONE_RE = re.compile(r"\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}")
 def docx_paras(path: Path, strip: bool = True) -> list:
     """The (style name, text) pairs of every non-empty paragraph. The parsers
     below work on this list, so a caller that already has the structure (the
-    Resume Studio profile editor, a normalized uploaded resume) can hand it
+    Resume Taylor profile editor, a normalized uploaded resume) can hand it
     over directly instead of round-tripping through a file."""
     doc = open_docx(path)
     return [
@@ -1623,7 +1623,7 @@ def archive_existing_outputs(create_dir: Path | None = None, archive_dir: Path |
 
 # ---------------------------------------------------------------------------
 # Result JSON: the structured, editable form of one run. Written with
-# --result-json, re-rendered (no LLM) with --render-json. Resume Studio keeps
+# --result-json, re-rendered (no LLM) with --render-json. Resume Taylor keeps
 # one per project so hand edits and template switches never need a new draft.
 # ---------------------------------------------------------------------------
 
