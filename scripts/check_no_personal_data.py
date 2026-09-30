@@ -30,7 +30,7 @@ FORBIDDEN = [
     (re.compile(r"(^|/)fact_bank\.ya?ml$"), "a personal fact bank (only examples/fact_bank.example.yaml is allowed)"),
     (re.compile(r"(^|/)(in|out)_(resume|profile|job|cover_letter)[^/]*$"), "an input or generated resume file"),
 ]
-ALLOWED_DOC_DIRS = ("examples/", "docs/", "tests/")
+ALLOWED_DOC_DIRS = ("examples/", "docs/", "backend/tests/")
 DOC_EXTS = (".docx", ".pdf", ".doc")
 SECRET_PATTERN = re.compile(rb"sk-ant-[A-Za-z0-9_\-]{20,}")
 
@@ -41,7 +41,7 @@ def git(*args: str) -> str:
 
 def problem(path: str) -> str | None:
     norm = path.replace("\\", "/")
-    if norm.startswith(ALLOWED_DOC_DIRS) or norm.startswith("webapp/frontend/dist/"):
+    if norm.startswith(ALLOWED_DOC_DIRS) or norm.startswith("frontend/dist/"):
         return None
     for pattern, why in FORBIDDEN:
         if pattern.search(norm) and norm != ".env.example":

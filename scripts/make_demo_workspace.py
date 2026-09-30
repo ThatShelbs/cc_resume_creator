@@ -1,6 +1,6 @@
 """
 Build a self-contained demo workspace (default: ./demo_workspace) around the
-fictional persona in examples/demo_data.py: profile, base resume, fact bank,
+fictional persona in resume_taylor/sample_data/demo_data.py: profile, base resume, fact bank,
 never-claim list, and three projects at different stages. Two come with a
 hand-written (truthful to the persona) result rendered through the real
 pipeline, so the app looks lived-in without any Claude calls.
@@ -13,17 +13,15 @@ import argparse
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
-sys.path.insert(0, str(ROOT / "examples"))
-
-from taylor.demo import seed_workspace  # noqa: E402
-from taylor.paths import Paths, remove_tree  # noqa: E402
+from resume_taylor.app.services.demo import seed_workspace
+from resume_taylor.app.storage.fs import remove_tree
+from resume_taylor.app.storage.paths import Paths
+from resume_taylor.layout import REPO_ROOT
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[1])
-    parser.add_argument("--out", type=Path, default=ROOT / "demo_workspace")
+    parser.add_argument("--out", type=Path, default=REPO_ROOT / "demo_workspace")
     parser.add_argument("--force", action="store_true", help="replace an existing demo workspace")
     args = parser.parse_args()
 
