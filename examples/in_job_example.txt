@@ -1,0 +1,5 @@
+Director, Customer Analytics (Example Co.)
+
+You will lead a team of analysts, own churn and retention modeling, and build
+forecasting for the commercial org. You have Python, SQL, and Tableau
+experience and strong stakeholder management skills.
