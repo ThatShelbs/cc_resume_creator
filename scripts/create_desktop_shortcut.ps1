@@ -8,9 +8,6 @@ if (-not (Test-Path $target)) { throw "Can't find $target" }
 
 $desktop = [Environment]::GetFolderPath("Desktop")
 $link = Join-Path $desktop "Resume Taylor.lnk"
-# The app used to be called Resume Studio; its shortcut would now point nowhere.
-$old = Join-Path $desktop "Resume Studio.lnk"
-if (Test-Path $old) { Remove-Item $old; Write-Host "Removed the old Resume Studio shortcut" }
 $shell = New-Object -ComObject WScript.Shell
 $shortcut = $shell.CreateShortcut($link)
 $shortcut.TargetPath = $target

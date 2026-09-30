@@ -90,10 +90,6 @@ Microsoft Word is used for PDF export; without it you still get Word (`.docx`) f
 Double-click `Update.bat` (if you used `git clone`), or download the new ZIP and unzip it
 to a new folder. Your data is kept outside the code folder, so an update never touches it.
 
-**Coming from Resume Studio?** That was this app's old name. Your data folder
-(`%LOCALAPPDATA%\ResumeStudio`) is moved to `%LOCALAPPDATA%\ResumeTaylor` the first time the new
-version starts, and `Update.bat` replaces an old "Resume Studio" desktop shortcut.
-
 ## What it does
 
 - **Paste a job posting, get a tailored resume.** A project per application keeps the

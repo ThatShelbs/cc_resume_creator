@@ -544,34 +544,10 @@ def test_default_data_root_is_outside_the_repo(monkeypatch, tmp_path):
     from taylor.paths import default_data_root
 
     monkeypatch.delenv("RESUME_TAYLOR_DATA", raising=False)
-    monkeypatch.delenv("RESUME_STUDIO_DATA", raising=False)
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     assert default_data_root() == tmp_path / "ResumeTaylor"
     monkeypatch.setenv("RESUME_TAYLOR_DATA", str(tmp_path / "mine"))
     assert default_data_root() == (tmp_path / "mine").resolve()
-
-
-def test_default_data_root_adopts_the_old_resume_studio_folder(monkeypatch, tmp_path):
-    from taylor.paths import default_data_root
-
-    monkeypatch.delenv("RESUME_TAYLOR_DATA", raising=False)
-    monkeypatch.delenv("RESUME_STUDIO_DATA", raising=False)
-    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
-    (tmp_path / "ResumeStudio" / "projects").mkdir(parents=True)
-    (tmp_path / "ResumeStudio" / "secrets.json").write_text("{}", encoding="utf-8")
-
-    root = default_data_root()
-    assert root == tmp_path / "ResumeTaylor"
-    assert (root / "secrets.json").read_text(encoding="utf-8") == "{}"
-    assert (root / "projects").is_dir() and not (tmp_path / "ResumeStudio").exists()
-
-    # An existing new folder is never merged into or overwritten.
-    (tmp_path / "ResumeStudio").mkdir()
-    assert default_data_root() == tmp_path / "ResumeTaylor"
-    assert (tmp_path / "ResumeStudio").exists()
-
-    monkeypatch.setenv("RESUME_STUDIO_DATA", str(tmp_path / "old-override"))
-    assert default_data_root() == (tmp_path / "old-override").resolve()
 
 
 def test_sample_data_loads_only_into_an_empty_folder_and_clears(tmp_path):
