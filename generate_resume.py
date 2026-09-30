@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
@@ -62,6 +63,18 @@ WARNINGS: list = []
 def warn(msg: str) -> None:
     print(f"  Warning: {msg}")
     WARNINGS.append(msg)
+
+
+# Resume Studio (the browser app) runs this script as a subprocess and sets
+# STUDIO_PROGRESS=1 so it can follow along. The "::stage <name>" lines it then
+# gets are a stable, machine-readable progress signal, so the app never has to
+# parse the human-facing messages. Plain CLI runs don't print them.
+PROGRESS_MARKERS = os.environ.get("STUDIO_PROGRESS") == "1"
+
+
+def stage(name: str) -> None:
+    if PROGRESS_MARKERS:
+        print(f"::stage {name}", flush=True)
 
 # The tailoring rules/methodology live in an agent-native Claude Code skill
 # (.claude/skills/resume-tailoring/SKILL.md) rather than in a Python string, so
@@ -146,9 +159,26 @@ def find_latest(prefix: str, exts: tuple = (".docx",)) -> Path:
 PHONE_RE = re.compile(r"\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}")
 
 
-def parse_applicant_info(profile_path: Path) -> dict:
-    doc = open_docx(profile_path)
-    paras = [(p.style.name, p.text.strip()) for p in doc.paragraphs if p.text.strip()]
+def docx_paras(path: Path, strip: bool = True) -> list:
+    """The (style name, text) pairs of every non-empty paragraph. The parsers
+    below work on this list, so a caller that already has the structure (the
+    Resume Studio profile editor, a normalized uploaded resume) can hand it
+    over directly instead of round-tripping through a file."""
+    doc = open_docx(path)
+    return [
+        (p.style.name, p.text.strip() if strip else p.text) for p in doc.paragraphs if p.text.strip()
+    ]
+
+
+def _paras_and_name(source, strip: bool = True) -> tuple:
+    if isinstance(source, (str, Path)):
+        return docx_paras(Path(source), strip), Path(source).name
+    return [(style, text.strip() if strip else text) for style, text in source], "the profile"
+
+
+def parse_applicant_info(profile) -> dict:
+    """`profile` is a .docx path or a list of (style, text) paragraphs."""
+    paras, profile_name = _paras_and_name(profile)
 
     headings = ("applicant info", "contact", "contact info")
     lines = []
@@ -177,7 +207,7 @@ def parse_applicant_info(profile_path: Path) -> dict:
 
     if not first_name or not email:
         sys.exit(
-            f"Could not find name/email under an 'Applicant info' section in {profile_path.name}. "
+            f"Could not find name/email under an 'Applicant info' section in {profile_name}. "
             "Expected a section with the applicant's name, email, phone, and location as separate lines."
         )
 
@@ -223,9 +253,9 @@ def _parse_dated_entries(paras: list) -> list:
     return entries
 
 
-def parse_prior_resume(resume_path: Path) -> dict:
-    doc = open_docx(resume_path)
-    paras = [(p.style.name, p.text) for p in doc.paragraphs if p.text.strip()]
+def parse_prior_resume(resume) -> dict:
+    """`resume` is a .docx path or a list of (style, text) paragraphs."""
+    paras, resume_name = _paras_and_name(resume, strip=False)
 
     section_names = {"summary", "education", "experience", "skills", "projects", "awards"}
     sections = {}
@@ -264,7 +294,7 @@ def parse_prior_resume(resume_path: Path) -> dict:
 
     if not jobs:
         sys.exit(
-            f"Could not parse any employers out of the EXPERIENCE section of {resume_path.name}. "
+            f"Could not parse any employers out of the EXPERIENCE section of {resume_name}. "
             "Expected 'Company | Location <tab> Dates' header lines followed by a title line and "
             "bulleted List Paragraph entries."
         )
@@ -650,9 +680,11 @@ FACT BANK (authoritative, employer-tagged facts; build every bullet from these a
 PROHIBITED CLAIMS (tier T4; case-insensitive regular expressions, and any match rejects the resume):
 {prohibited}"""
 
+    stage("drafting")
     print("  Drafting tailored content...")
     draft = _invoke_claude(claude_bin, draft_system_prompt, user_message, model, effort)
 
+    stage("structuring")
     print("  Converting to structured data...")
     parsed = None
     raw = ""
@@ -790,19 +822,20 @@ def warn_analogy_phrasing(bullets_by_company: dict) -> None:
                 )
 
 
-def load_deny_patterns() -> list:
+def load_deny_patterns(path: Path | None = None) -> list:
     """Compile the hard "never claim" list. Missing file means no deny list."""
-    if not DO_NOT_CLAIM_PATH.exists():
+    path = path or DO_NOT_CLAIM_PATH
+    if not path.exists():
         return []
     patterns = []
-    for line in DO_NOT_CLAIM_PATH.read_text(encoding="utf-8").splitlines():
+    for line in path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
             continue
         try:
             patterns.append(re.compile(line, re.IGNORECASE))
         except re.error as exc:
-            sys.exit(f"Invalid regex in {DO_NOT_CLAIM_PATH.name}: {line!r} ({exc})")
+            sys.exit(f"Invalid regex in {path.name}: {line!r} ({exc})")
     return patterns
 
 
@@ -1033,14 +1066,13 @@ def _skill_key(skill: str) -> str:
     return re.sub(r"\s*\([^)]*\)", "", skill).strip().lower()
 
 
-def parse_profile_skills(profile_path: Path) -> dict:
+def parse_profile_skills(profile) -> dict:
     """Deterministically pull the flat skill/tool lists out of the profile's
     'Software/Tools' and 'Skills' sections (List Paragraph entries under those
     headers) — used as a truthful pool to backfill anything the model omits.
     Kept separate: tool names are unambiguous and safe to always list in full;
     the broader skills phrases benefit more from job-specific filtering."""
-    doc = open_docx(profile_path)
-    paras = [(p.style.name, p.text.strip()) for p in doc.paragraphs if p.text.strip()]
+    paras, _ = _paras_and_name(profile)
 
     tool_section_names = {"software/tools", "software / tools", "tools"}
     skill_section_names = {"skills"}
@@ -1225,59 +1257,170 @@ def _add_hyperlink(paragraph, text: str, url: str) -> None:
     paragraph._p.append(link)
 
 
-def _build_styles(d: docx.Document) -> dict:
+@dataclass(frozen=True)
+class TemplateSpec:
+    """Everything that differs between the resume templates. All of them stay
+    inside the ATS-safe envelope from resume_best_practices.md: one column,
+    no tables, nothing in the header/footer layer, a standard font."""
+
+    key: str
+    label: str
+    description: str
+    font: str = "Calibri"
+    body_size: float = 10.5
+    name_size: float = 22
+    contact_size: float = 9.5
+    section_size: float = 11.5
+    entry_title_size: float = 10
+    ink: RGBColor = INK  # name and section headings
+    accent: RGBColor = INK  # company line in title-first layouts
+    muted: RGBColor = MUTED
+    rule_color: str | None = RULE_COLOR  # section heading underline; None for none
+    rule_size: int = 6
+    margin_tb: float = 0.55
+    margin_lr: float = 0.75
+    name_align: str = "center"
+    name_small_caps: bool = False
+    section_all_caps: bool = True
+    section_small_caps: bool = False
+    section_space_before: float = 12
+    section_space_after: float = 4
+    body_space_after: float = 4
+    bullet_space_after: float = 3
+    bullet_indent: float = 0.2
+    job_space_after: float = 8
+    contact_space_after: float = 10
+    # "company_first": Company | Location + dates, then an italic title line.
+    # "title_first": bold title + dates, then Company | Location in the accent color.
+    entry_layout: str = "company_first"
+    skills_separator: str = ", "
+
+
+TEMPLATES = {
+    "classic": TemplateSpec(
+        key="classic",
+        label="Classic",
+        description="Centered navy header and ruled section headings. The original design.",
+    ),
+    "modern": TemplateSpec(
+        key="modern",
+        label="Modern",
+        description="Left-aligned header with a teal accent, role titles leading each entry.",
+        font="Arial",
+        body_size=10,
+        name_size=24,
+        contact_size=9,
+        section_size=11,
+        entry_title_size=10,
+        ink=RGBColor(0x0F, 0x5E, 0x63),
+        accent=RGBColor(0x0F, 0x5E, 0x63),
+        muted=RGBColor(0x55, 0x5B, 0x66),
+        rule_color="C9D3D6",
+        rule_size=4,
+        margin_tb=0.6,
+        margin_lr=0.7,
+        name_align="left",
+        section_all_caps=False,
+        section_space_before=11,
+        contact_space_after=8,
+        entry_layout="title_first",
+        skills_separator=" | ",
+    ),
+    "compact": TemplateSpec(
+        key="compact",
+        label="Compact",
+        description="Serif, tighter margins and spacing. Fits a long career on fewer pages.",
+        font="Cambria",
+        body_size=10,
+        name_size=18,
+        contact_size=9,
+        section_size=10.5,
+        entry_title_size=9.5,
+        ink=RGBColor(0x1A, 0x1A, 0x1A),
+        accent=RGBColor(0x1A, 0x1A, 0x1A),
+        muted=RGBColor(0x4A, 0x4A, 0x4A),
+        rule_color="1A1A1A",
+        rule_size=4,
+        margin_tb=0.5,
+        margin_lr=0.6,
+        name_small_caps=True,
+        section_all_caps=False,
+        section_small_caps=True,
+        section_space_before=8,
+        section_space_after=3,
+        body_space_after=2,
+        bullet_space_after=1.5,
+        bullet_indent=0.18,
+        job_space_after=5,
+        contact_space_after=6,
+        skills_separator=" | ",
+    ),
+}
+DEFAULT_TEMPLATE = "classic"
+
+
+def get_template(key: str | None) -> TemplateSpec:
+    return TEMPLATES.get(key or DEFAULT_TEMPLATE, TEMPLATES[DEFAULT_TEMPLATE])
+
+
+def _build_styles(d: docx.Document, spec: TemplateSpec) -> dict:
     styles = d.styles
 
     normal = styles["Normal"]
-    normal.font.name = "Calibri"
-    normal.font.size = Pt(10.5)
+    normal.font.name = spec.font
+    normal.font.size = Pt(spec.body_size)
     normal.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
     normal.paragraph_format.space_before = Pt(0)
-    normal.paragraph_format.space_after = Pt(4)
+    normal.paragraph_format.space_after = Pt(spec.body_space_after)
     normal.paragraph_format.line_spacing = 1.0
+
+    align = WD_ALIGN_PARAGRAPH.CENTER if spec.name_align == "center" else WD_ALIGN_PARAGRAPH.LEFT
 
     name_style = styles.add_style("ResumeName", WD_STYLE_TYPE.PARAGRAPH)
     name_style.base_style = normal
-    name_style.font.size = Pt(22)
+    name_style.font.size = Pt(spec.name_size)
     name_style.font.bold = True
-    name_style.font.color.rgb = INK
-    name_style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    name_style.font.small_caps = spec.name_small_caps or None
+    name_style.font.color.rgb = spec.ink
+    name_style.paragraph_format.alignment = align
     name_style.paragraph_format.space_after = Pt(2)
 
     contact_style = styles.add_style("ResumeContact", WD_STYLE_TYPE.PARAGRAPH)
     contact_style.base_style = normal
-    contact_style.font.size = Pt(9.5)
-    contact_style.font.color.rgb = MUTED
-    contact_style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    contact_style.paragraph_format.space_after = Pt(10)
+    contact_style.font.size = Pt(spec.contact_size)
+    contact_style.font.color.rgb = spec.muted
+    contact_style.paragraph_format.alignment = align
+    contact_style.paragraph_format.space_after = Pt(spec.contact_space_after)
 
     section_style = styles.add_style("ResumeSection", WD_STYLE_TYPE.PARAGRAPH)
     section_style.base_style = normal
-    section_style.font.size = Pt(11.5)
+    section_style.font.size = Pt(spec.section_size)
     section_style.font.bold = True
-    section_style.font.color.rgb = INK
-    section_style.font.all_caps = True
-    section_style.paragraph_format.space_before = Pt(12)
-    section_style.paragraph_format.space_after = Pt(4)
+    section_style.font.color.rgb = spec.ink
+    section_style.font.all_caps = spec.section_all_caps or None
+    section_style.font.small_caps = spec.section_small_caps or None
+    section_style.paragraph_format.space_before = Pt(spec.section_space_before)
+    section_style.paragraph_format.space_after = Pt(spec.section_space_after)
 
     entry_title_style = styles.add_style("ResumeEntryTitle", WD_STYLE_TYPE.PARAGRAPH)
     entry_title_style.base_style = normal
     entry_title_style.font.italic = True
-    entry_title_style.font.size = Pt(10)
-    entry_title_style.font.color.rgb = MUTED
-    entry_title_style.paragraph_format.space_after = Pt(3)
+    entry_title_style.font.size = Pt(spec.entry_title_size)
+    entry_title_style.font.color.rgb = spec.muted
+    entry_title_style.paragraph_format.space_after = Pt(3 if spec.body_space_after >= 4 else 1.5)
 
     bullet_style = styles["List Bullet"]
-    bullet_style.font.name = "Calibri"
-    bullet_style.font.size = Pt(10.5)  # match body text in Summary/Education/Skills
-    bullet_style.paragraph_format.left_indent = Inches(0.2)
-    bullet_style.paragraph_format.space_after = Pt(3)
+    bullet_style.font.name = spec.font
+    bullet_style.font.size = Pt(spec.body_size)  # match body text in Summary/Education/Skills
+    bullet_style.paragraph_format.left_indent = Inches(spec.bullet_indent)
+    bullet_style.paragraph_format.space_after = Pt(spec.bullet_space_after)
     bullet_style.paragraph_format.line_spacing = 1.0
 
     return {"section": section_style, "entry_title": entry_title_style}
 
 
-def _add_entry_header(d: docx.Document, left_text: str, right_text: str):
+def _add_entry_header(d: docx.Document, left_text: str, right_text: str, spec: TemplateSpec | None = None):
+    spec = spec or TEMPLATES[DEFAULT_TEMPLATE]
     p = d.add_paragraph()
     content_width = (
         d.sections[0].page_width - d.sections[0].left_margin - d.sections[0].right_margin
@@ -1287,25 +1430,26 @@ def _add_entry_header(d: docx.Document, left_text: str, right_text: str):
     left_run.bold = True
     if right_text:
         right_run = p.add_run(f"\t{right_text}")
-        right_run.font.color.rgb = MUTED
+        right_run.font.color.rgb = spec.muted
     p.paragraph_format.space_after = Pt(1)
     return p
 
 
-def _new_document(data: dict) -> tuple:
+def _new_document(data: dict, spec: TemplateSpec | None = None) -> tuple:
     """Letter-size document with the shared styles and the name/contact
     header, used by both the resume and the cover letter."""
+    spec = spec or TEMPLATES[DEFAULT_TEMPLATE]
     d = docx.Document()
 
     section = d.sections[0]
     section.page_width = Inches(8.5)
     section.page_height = Inches(11)
-    section.top_margin = Inches(0.55)
-    section.bottom_margin = Inches(0.55)
-    section.left_margin = Inches(0.75)
-    section.right_margin = Inches(0.75)
+    section.top_margin = Inches(spec.margin_tb)
+    section.bottom_margin = Inches(spec.margin_tb)
+    section.left_margin = Inches(spec.margin_lr)
+    section.right_margin = Inches(spec.margin_lr)
 
-    styles = _build_styles(d)
+    styles = _build_styles(d, spec)
 
     d.add_paragraph(f"{data['first_name']} {data['last_name']}", style="ResumeName")
     contact_p = d.add_paragraph(style="ResumeContact")
@@ -1330,8 +1474,8 @@ def _new_document(data: dict) -> tuple:
     return d, styles
 
 
-def build_cover_letter_docx(data: dict, paragraphs: list, out_path: Path) -> None:
-    d, _styles = _new_document(data)
+def build_cover_letter_docx(data: dict, paragraphs: list, out_path: Path, template: str | None = None) -> None:
+    d, _styles = _new_document(data, get_template(template))
     d.add_paragraph(datetime.now().strftime("%B %d, %Y").replace(" 0", " "))
     d.add_paragraph("Dear Hiring Team,")
     for text in paragraphs:
@@ -1342,12 +1486,14 @@ def build_cover_letter_docx(data: dict, paragraphs: list, out_path: Path) -> Non
     d.save(str(out_path))
 
 
-def build_docx(data: dict, out_path: Path) -> None:
-    d, styles = _new_document(data)
+def build_docx(data: dict, out_path: Path, template: str | None = None) -> None:
+    spec = get_template(template)
+    d, styles = _new_document(data, spec)
 
     def add_heading(text: str) -> None:
         p = d.add_paragraph(text, style=styles["section"])
-        _set_bottom_border(p)
+        if spec.rule_color:
+            _set_bottom_border(p, spec.rule_color, spec.rule_size)
 
     add_heading("Summary")
     d.add_paragraph(data["summary"])
@@ -1358,61 +1504,313 @@ def build_docx(data: dict, out_path: Path) -> None:
             header = " | ".join(
                 part for part in (edu.get("institution"), edu.get("location")) if part
             )
-            _add_entry_header(d, header, edu.get("dates", ""))
+            _add_entry_header(d, header, edu.get("dates", ""), spec)
             degree_p = d.add_paragraph(edu.get("degree", ""))
-            degree_p.paragraph_format.space_after = Pt(6)
+            degree_p.paragraph_format.space_after = Pt(6 if spec.body_space_after >= 4 else 3)
 
     if data.get("experience"):
         add_heading("Experience")
         for job in data["experience"]:
-            header = " | ".join(
-                part for part in (job.get("company"), job.get("location")) if part
-            )
-            _add_entry_header(d, header, job.get("dates", ""))
-            d.add_paragraph(job.get("title", ""), style=styles["entry_title"])
+            place = " | ".join(part for part in (job.get("company"), job.get("location")) if part)
+            if spec.entry_layout == "title_first":
+                _add_entry_header(d, job.get("title", "") or place, job.get("dates", ""), spec)
+                company_p = d.add_paragraph()
+                company_run = company_p.add_run(place)
+                company_run.font.color.rgb = spec.accent
+                company_run.bold = True
+                company_run.font.size = Pt(spec.entry_title_size)
+                company_p.paragraph_format.space_after = Pt(3)
+            else:
+                _add_entry_header(d, place, job.get("dates", ""), spec)
+                d.add_paragraph(job.get("title", ""), style=styles["entry_title"])
             bullets = job.get("bullets", [])
             for i, bullet in enumerate(bullets):
                 p = d.add_paragraph(bullet, style="List Bullet")
                 if i == len(bullets) - 1:
-                    p.paragraph_format.space_after = Pt(8)
+                    p.paragraph_format.space_after = Pt(spec.job_space_after)
 
     if data.get("skills"):
         add_heading("Skills")
-        d.add_paragraph(", ".join(data["skills"]))
+        d.add_paragraph(spec.skills_separator.join(data["skills"]))
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     d.save(str(out_path))
 
 
-def convert_to_pdf(docx_path: Path, pdf_path: Path) -> None:
-    from docx2pdf import convert
+def _convert_with_word(docx_path: Path, pdf_path: Path) -> None:
+    """Export through Word's COM API directly. docx2pdf does the same, but it
+    reuses any Word window you have open, prints progress bars, and treats
+    Word dropping the COM link on Quit() (common, and harmless once the PDF
+    exists) as a failure. A private DispatchEx instance avoids all three."""
+    import pythoncom
+    import win32com.client
 
-    convert(str(docx_path), str(pdf_path))
+    pythoncom.CoInitialize()
+    word = None
+    try:
+        word = win32com.client.DispatchEx("Word.Application")
+        word.Visible = False
+        word.DisplayAlerts = 0
+        doc = word.Documents.Open(str(docx_path.resolve()), ReadOnly=True, AddToRecentFiles=False)
+        try:
+            doc.ExportAsFixedFormat(str(pdf_path.resolve()), 17)  # 17 = wdExportFormatPDF
+        finally:
+            doc.Close(False)
+    finally:
+        if word is not None:
+            try:
+                word.Quit()
+            except Exception:
+                pass
+        pythoncom.CoUninitialize()
+
+
+def convert_to_pdf(docx_path: Path, pdf_path: Path) -> None:
+    if pdf_path.exists():
+        pdf_path.unlink()
+    if sys.platform == "win32":
+        _convert_with_word(docx_path, pdf_path)
+    else:
+        from docx2pdf import convert
+
+        convert(str(docx_path), str(pdf_path))
+    if not pdf_path.exists():
+        raise RuntimeError("Word finished without producing a PDF")
 
 
 OUTPUT_PREFIXES = ("out_resume_", "out_cover_letter_")
 
 
-def archive_existing_outputs() -> None:
-    ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-    CREATE_DIR.mkdir(parents=True, exist_ok=True)
+def _display(path: Path) -> str:
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def archive_existing_outputs(create_dir: Path | None = None, archive_dir: Path | None = None) -> None:
+    create_dir = create_dir or CREATE_DIR
+    archive_dir = archive_dir or ARCHIVE_DIR
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    create_dir.mkdir(parents=True, exist_ok=True)
 
     archive_time = datetime.now().strftime("%H-%M-%S")
     for prefix in OUTPUT_PREFIXES:
-        for docx_file in CREATE_DIR.glob(f"{prefix}*.docx"):
+        for docx_file in create_dir.glob(f"{prefix}*.docx"):
             archived_name = f"{docx_file.stem}-{archive_time}{docx_file.suffix}"
-            shutil.move(str(docx_file), str(ARCHIVE_DIR / archived_name))
-            print(f"Archived {docx_file.name} -> resume_archive/{archived_name}")
+            shutil.move(str(docx_file), str(archive_dir / archived_name))
+            print(f"Archived {docx_file.name} -> {archive_dir.name}/{archived_name}")
 
-        for report_file in CREATE_DIR.glob(f"{prefix}*_report.md"):
+        for report_file in create_dir.glob(f"{prefix}*_report.md"):
             base = report_file.name[: -len("_report.md")]
             archived_name = f"{base}-{archive_time}_report.md"
-            shutil.move(str(report_file), str(ARCHIVE_DIR / archived_name))
-            print(f"Archived {report_file.name} -> resume_archive/{archived_name}")
+            shutil.move(str(report_file), str(archive_dir / archived_name))
+            print(f"Archived {report_file.name} -> {archive_dir.name}/{archived_name}")
 
-        for pdf_file in CREATE_DIR.glob(f"{prefix}*.pdf"):
+        for pdf_file in create_dir.glob(f"{prefix}*.pdf"):
             pdf_file.unlink()
             print(f"Removed superseded {pdf_file.name} (only .docx versions are archived)")
+
+
+# ---------------------------------------------------------------------------
+# Result JSON: the structured, editable form of one run. Written with
+# --result-json, re-rendered (no LLM) with --render-json. Resume Studio keeps
+# one per project so hand edits and template switches never need a new draft.
+# ---------------------------------------------------------------------------
+
+RESULT_SCHEMA = 1
+
+
+def result_citations(result: dict) -> dict:
+    """(company, bullet text) -> cited fact ids, the shape write_report takes."""
+    return {
+        (job["company"], b["text"]): list(b.get("ids") or [])
+        for job in result["experience"]
+        for b in job["bullets"]
+    }
+
+
+def result_bullets_by_company(result: dict) -> dict:
+    return {job["company"]: [b["text"] for b in job["bullets"]] for job in result["experience"]}
+
+
+def result_to_docx_data(result: dict) -> dict:
+    return {
+        **result["contact"],
+        "summary": result["summary"],
+        "education": result.get("education") or [],
+        "experience": [
+            {**{k: job.get(k, "") for k in ("company", "location", "dates", "title")},
+             "bullets": [b["text"] for b in job["bullets"]]}
+            for job in result["experience"]
+        ],
+        "skills": result.get("skills") or [],
+    }
+
+
+def load_result(path: Path) -> dict:
+    try:
+        result = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        sys.exit(f"Could not read result JSON {path}: {exc}")
+    for key in ("contact", "summary", "experience"):
+        if key not in result:
+            sys.exit(f"{path.name} is not a resume result file (missing '{key}').")
+    return result
+
+
+def save_result(result: dict, path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def report_deny_violations(violations: list, source_name: str) -> None:
+    """Print every prohibited-claim hit and exit without writing anything."""
+    for where, pattern, text in violations:
+        print(f"  PROHIBITED CLAIM in {where} (matched {pattern!r}): {text[:120]}")
+        if PROGRESS_MARKERS:
+            print("::deny " + json.dumps({"where": where, "pattern": pattern, "text": text}), flush=True)
+    sys.exit(
+        f"Refusing to write the resume: {len(violations)} prohibited claim(s) from "
+        f"{source_name}. Nothing was archived or overwritten."
+    )
+
+
+def revalidate_result(result: dict, ctx: dict) -> None:
+    """Re-run the deterministic guards over a result that may have been edited
+    by hand, in place. The model isn't involved, so nothing is dropped: an
+    edit is a deliberate human choice, and every check becomes a warning to
+    review. The one exception is the never-claim list, which stays a hard stop."""
+    WARNINGS.clear()
+    result["summary"] = remove_em_dashes(result["summary"].strip())
+    for job in result["experience"]:
+        job["bullets"] = [
+            {"text": remove_em_dashes(b["text"].strip()), "ids": list(b.get("ids") or [])}
+            for b in job["bullets"]
+            if b.get("text", "").strip()
+        ]
+    result["skills"] = [s.strip() for s in result.get("skills") or [] if s.strip()]
+    if result.get("cover_letter"):
+        result["cover_letter"] = [
+            {"text": remove_em_dashes(p["text"].strip()), "ids": list(p.get("ids") or [])}
+            for p in result["cover_letter"]
+            if p.get("text", "").strip()
+        ]
+
+    bullets_by_company = result_bullets_by_company(result)
+    source_text = ctx["source_text"]
+    bank = ctx["fact_bank"]
+
+    if source_text:
+        warn_unsupported_numbers(result["summary"], "the summary", source_text)
+    for job in result["experience"]:
+        company = job["company"]
+        for b in job["bullets"]:
+            text, ids = b["text"], b["ids"]
+            if bank:
+                if not ids:
+                    warn(f"uncited bullet under {company}, please verify: {text[:80]}...")
+                for fid in ids:
+                    fact = bank.get(fid)
+                    if fact is None:
+                        warn(f"a bullet under {company} cites unknown fact {fid}: {text[:80]}...")
+                    elif fact["employer"] not in (company, "general"):
+                        warn(f"a bullet under {company} cites {fid}, a fact from {fact['employer']}: {text[:80]}...")
+            if source_text:
+                warn_unsupported_numbers(text, f"a bullet under {company}", source_text)
+    warn_analogy_phrasing(bullets_by_company)
+    if source_text:
+        warn_unverified_skills(result["skills"], source_text)
+        for i, p in enumerate(result.get("cover_letter") or [], 1):
+            warn_unsupported_numbers(p["text"], f"cover letter paragraph {i}", source_text)
+
+    violations = find_deny_violations(
+        result["summary"], bullets_by_company, result["skills"], ctx["deny_patterns"]
+    )
+    violations += [
+        ("cover letter", pattern, text)
+        for _, pattern, text in find_deny_violations(
+            "\n".join(p["text"] for p in result.get("cover_letter") or []), {}, [], ctx["deny_patterns"]
+        )
+    ]
+    if violations:
+        report_deny_violations(violations, ctx["deny_name"])
+
+    if ctx["job_text"]:
+        output_text = "\n".join(
+            [result["summary"], *(b for bs in bullets_by_company.values() for b in bs), *result["skills"]]
+        )
+        covered, missing = keyword_coverage(ctx["job_text"], output_text, ctx["profile_skills"], bank)
+        result["coverage"] = {"covered": covered, "missing": missing}
+
+
+def write_outputs(
+    result: dict,
+    out_dir: Path,
+    archive_dir: Path | None,
+    template: str,
+    no_pdf: bool,
+    fact_bank: dict | None = None,
+) -> Path:
+    """Archive whatever is in out_dir, then write the resume (and cover letter)
+    .docx/.pdf plus the tailoring report. Returns the report path."""
+    data = result_to_docx_data(result)
+    today = datetime.now().strftime("%Y-%m-%d")
+    slug = slugify_name(data["first_name"], data["last_name"])
+    base_name = f"out_resume_{slug}_{today}"
+    cl_base_name = f"out_cover_letter_{slug}_{today}"
+    page_count = None
+
+    archive_existing_outputs(out_dir, archive_dir)
+    stage("rendering")
+    outputs = [(base_name, lambda path: build_docx(data, path, template))]
+    if result.get("cover_letter"):
+        paragraphs = [p["text"] for p in result["cover_letter"]]
+        outputs.append((cl_base_name, lambda path: build_cover_letter_docx(data, paragraphs, path, template)))
+    for name, build in outputs:
+        docx_path = out_dir / f"{name}.docx"
+        pdf_path = out_dir / f"{name}.pdf"
+        build(docx_path)
+        print(f"Wrote {_display(docx_path)}")
+        if no_pdf:
+            continue
+        stage("pdf")
+        try:
+            convert_to_pdf(docx_path, pdf_path)
+            print(f"Wrote {_display(pdf_path)}")
+        except Exception as exc:  # docx2pdf requires MS Word via COM automation
+            warn(f"could not generate {pdf_path.name} ({exc}). The .docx was still created.")
+            continue
+        pages = count_pdf_pages(pdf_path)
+        if name == base_name:
+            page_count = pages
+            print(f"Resume length: {pages} page(s)")
+            if pages > 2:
+                warn(f"the resume runs {pages} pages; consider cutting the weakest bullets.")
+        elif pages > 1:
+            warn(f"the cover letter runs {pages} pages; it should fit on one.")
+
+    result["page_count"] = page_count
+    result["template"] = template
+    report_path = out_dir / f"{base_name}_report.md"
+    coverage = result.get("coverage") or {}
+    write_report(
+        report_path,
+        result.get("inputs") or {},
+        result.get("model", MODEL),
+        result.get("effort", EFFORT),
+        WARNINGS,
+        (coverage.get("covered", []), coverage.get("missing", [])),
+        result_bullets_by_company(result),
+        result_citations(result),
+        fact_bank,
+        result.get("draft", ""),
+        cover_letter=[(p["text"], p.get("ids") or []) for p in result.get("cover_letter") or []] or None,
+        page_count=page_count,
+    )
+    return report_path
 
 
 def parse_args(argv=None) -> argparse.Namespace:
@@ -1422,6 +1820,12 @@ def parse_args(argv=None) -> argparse.Namespace:
         type=Path,
         help="job posting .docx/.pdf/.txt/.md (default: newest resume_input/in_job*)",
     )
+    parser.add_argument("--profile", type=Path, help="profile .docx (default: newest resume_input/in_profile*)")
+    parser.add_argument("--resume", type=Path, help="prior resume .docx (default: newest resume_input/in_resume*)")
+    parser.add_argument(
+        "--fact-bank", type=Path, help=f"fact bank YAML (default: {FACT_BANK_PATH.relative_to(ROOT)})"
+    )
+    parser.add_argument("--deny", type=Path, help=f"never-claim list (default: {DO_NOT_CLAIM_PATH.name})")
     parser.add_argument(
         "--cover-letter",
         action="store_true",
@@ -1434,6 +1838,20 @@ def parse_args(argv=None) -> argparse.Namespace:
     )
     parser.add_argument("--model", default=MODEL, help=f"Claude model (default: {MODEL})")
     parser.add_argument("--effort", default=EFFORT, help=f"reasoning effort (default: {EFFORT})")
+    parser.add_argument(
+        "--template",
+        choices=sorted(TEMPLATES),
+        default=DEFAULT_TEMPLATE,
+        help=f"resume layout (default: {DEFAULT_TEMPLATE})",
+    )
+    parser.add_argument("--out-dir", type=Path, help="where to write outputs (default: resume_create/)")
+    parser.add_argument("--archive-dir", type=Path, help="where superseded outputs go (default: resume_archive/)")
+    parser.add_argument("--result-json", type=Path, help="also save the structured, editable result here")
+    parser.add_argument(
+        "--render-json",
+        type=Path,
+        help="skip generation: re-validate and render a saved result JSON (no Claude call)",
+    )
     parser.add_argument("--no-pdf", action="store_true", help="skip the Word-based PDF export")
     parser.add_argument(
         "--dry-run",
@@ -1443,15 +1861,18 @@ def parse_args(argv=None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def main(argv=None) -> None:
-    args = parse_args(argv)
-    WARNINGS.clear()
+def _require(path: Path, what: str) -> Path:
+    if not path.exists():
+        sys.exit(f"{what} not found: {path}")
+    return path
 
-    profile_path = find_latest("in_profile")
-    resume_path = find_latest("in_resume")
-    job_path = args.job or find_latest("in_job", JOB_POSTING_EXTS)
-    if not job_path.exists():
-        sys.exit(f"Job posting not found: {job_path}")
+
+def load_context(args: argparse.Namespace) -> dict:
+    """Locate and parse every input. Shared by generation and --render-json."""
+    profile_path = _require(args.profile or find_latest("in_profile"), "Profile")
+    resume_path = _require(args.resume or find_latest("in_resume"), "Prior resume")
+    job_path = _require(args.job or find_latest("in_job", JOB_POSTING_EXTS), "Job posting")
+    deny_path = args.deny or DO_NOT_CLAIM_PATH
 
     print(f"Profile: {profile_path.name}")
     print(f"Prior resume: {resume_path.name}")
@@ -1460,26 +1881,45 @@ def main(argv=None) -> None:
     contact = parse_applicant_info(profile_path)
     parsed_resume = parse_prior_resume(resume_path)
     companies = [job["company"] for job in parsed_resume["jobs"]]
-
     profile_text = read_docx_text(profile_path)
     resume_text = read_docx_text(resume_path)
     job_text = read_input_text(job_path)
     if not job_text:
         sys.exit(f"No text could be read from {job_path.name} (a scanned PDF?). Save it as .txt instead.")
 
-    deny_patterns = load_deny_patterns()
-    fact_bank = load_fact_bank(companies)
-    if fact_bank:
-        print(f"Fact bank: {len(fact_bank)} facts (citations enforced)")
-    else:
-        print(
-            f"Fact bank: none at {FACT_BANK_PATH.relative_to(ROOT)}; bullets won't be "
-            "provenance-checked. Run `python build_fact_bank.py` to create one."
-        )
+    return {
+        "profile_path": profile_path,
+        "resume_path": resume_path,
+        "job_path": job_path,
+        "contact": contact,
+        "parsed_resume": parsed_resume,
+        "companies": companies,
+        "profile_text": profile_text,
+        "resume_text": resume_text,
+        "job_text": job_text,
+        "source_text": profile_text + "\n" + resume_text,
+        "deny_patterns": load_deny_patterns(deny_path),
+        "deny_name": deny_path.name,
+        "fact_bank_path": args.fact_bank or FACT_BANK_PATH,
+        "profile_skills": parse_profile_skills(profile_path),
+        "inputs": {
+            "Profile": profile_path.name,
+            "Prior resume": resume_path.name,
+            "Job posting": job_path.name,
+        },
+    }
+
+
+def generate(args: argparse.Namespace, ctx: dict) -> dict:
+    """The Claude-backed half: draft, structure, and validate. Returns a result dict."""
+    fact_bank = ctx["fact_bank"]
+    parsed_resume = ctx["parsed_resume"]
+    resume_text, job_text = ctx["resume_text"], ctx["job_text"]
+    deny_patterns = ctx["deny_patterns"]
 
     print(f"Tailoring content with {args.model} (effort={args.effort})...")
     tailored = tailor_content(
-        profile_text,
+        ctx["profile_text"],
         resume_text,
         job_text,
         parsed_resume["jobs"],
@@ -1489,6 +1929,7 @@ def main(argv=None) -> None:
         effort=args.effort,
     )
 
+    stage("validating")
     summary = fix_years_of_experience(tailored["summary"], resume_text)
     summary = remove_em_dashes(summary)
     bullets_by_company = tailored["bullets_by_company"]
@@ -1508,10 +1949,10 @@ def main(argv=None) -> None:
     bullets_by_company = {c: [remove_em_dashes(b) for b in bs] for c, bs in bullets_by_company.items()}
     warn_analogy_phrasing(bullets_by_company)
 
-    profile_skills = parse_profile_skills(profile_path)
+    profile_skills = ctx["profile_skills"]
     skills = merge_and_sort_skills(tailored["skills"], profile_skills, job_text)
 
-    source_text = profile_text + "\n" + resume_text
+    source_text = ctx["source_text"]
     warn_unsupported_numbers(summary, "the summary", source_text)
     for company, bullets in bullets_by_company.items():
         for bullet in bullets:
@@ -1520,12 +1961,7 @@ def main(argv=None) -> None:
 
     violations = find_deny_violations(summary, bullets_by_company, skills, deny_patterns)
     if violations:
-        for where, pattern, text in violations:
-            print(f"  PROHIBITED CLAIM in {where} (matched {pattern!r}): {text[:120]}")
-        sys.exit(
-            f"Refusing to write the resume: {len(violations)} prohibited claim(s) from "
-            f"{DO_NOT_CLAIM_PATH.name}. Nothing was archived or overwritten; re-run to regenerate."
-        )
+        report_deny_violations(violations, ctx["deny_name"])
 
     experience = []
     for job in parsed_resume["jobs"]:
@@ -1543,13 +1979,14 @@ def main(argv=None) -> None:
                 "location": job["location"],
                 "dates": job["dates"],
                 "title": job["title"],
-                "bullets": bullets,
+                "bullets": [
+                    {"text": b, "ids": citations.get((job["company"], b), [])} for b in bullets
+                ],
             }
         )
 
     output_text = "\n".join([summary, *(b for bs in bullets_by_company.values() for b in bs), *skills])
-    coverage = keyword_coverage(job_text, output_text, profile_skills, fact_bank)
-    covered, missing = coverage
+    covered, missing = keyword_coverage(job_text, output_text, profile_skills, fact_bank)
     print(
         f"Keyword coverage: {len(covered)}/{len(covered) + len(missing)} posting terms you "
         "have appear in the resume."
@@ -1559,6 +1996,7 @@ def main(argv=None) -> None:
 
     cover_letter = None
     if args.cover_letter:
+        stage("cover_letter")
         print("Drafting cover letter...")
         cover_letter = validate_cover_letter(
             draft_cover_letter(
@@ -1573,86 +2011,93 @@ def main(argv=None) -> None:
             "\n".join(text for text, _ in cover_letter), {}, [], deny_patterns
         )
         if cl_violations:
-            for _, pattern, text in cl_violations:
-                print(f"  PROHIBITED CLAIM in the cover letter (matched {pattern!r}): {text[:120]}")
-            sys.exit(
-                f"Refusing to write: the cover letter has {len(cl_violations)} prohibited claim(s) "
-                f"from {DO_NOT_CLAIM_PATH.name}. Nothing was archived or overwritten; re-run."
-            )
+            report_deny_violations([("cover letter", p, t) for _, p, t in cl_violations], ctx["deny_name"])
 
-    data = {
-        **contact,
+    return {
+        "schema": RESULT_SCHEMA,
+        "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "model": args.model,
+        "effort": args.effort,
+        "template": args.template,
+        "inputs": ctx["inputs"],
+        "contact": ctx["contact"],
         "summary": summary,
         "education": parsed_resume["education"],
         "experience": experience,
         "skills": skills,
+        "cover_letter": [{"text": t, "ids": ids} for t, ids in cover_letter] if cover_letter else None,
+        "coverage": {"covered": covered, "missing": missing},
+        "page_count": None,
+        "draft": tailored["draft"],
     }
 
-    today = datetime.now().strftime("%Y-%m-%d")
-    slug = slugify_name(data["first_name"], data["last_name"])
-    base_name = f"out_resume_{slug}_{today}"
-    cl_base_name = f"out_cover_letter_{slug}_{today}"
-    out_dir = Path(tempfile.gettempdir()) if args.dry_run else CREATE_DIR
-    report_path = out_dir / f"{base_name}_report.md"
-    page_count = None
 
+def main(argv=None) -> None:
+    args = parse_args(argv)
+    WARNINGS.clear()
+    stage("preparing")
+
+    ctx = load_context(args)
+    ctx["fact_bank"] = load_fact_bank(ctx["companies"], ctx["fact_bank_path"])
+    if args.render_json:
+        print(f"Re-rendering {args.render_json.name} (no Claude call)...")
+    elif ctx["fact_bank"]:
+        print(f"Fact bank: {len(ctx['fact_bank'])} facts (citations enforced)")
+    else:
+        print(
+            f"Fact bank: none at {_display(ctx['fact_bank_path'])}; bullets won't be "
+            "provenance-checked. Run `python build_fact_bank.py` to create one."
+        )
+
+    if args.render_json:
+        result = load_result(args.render_json)
+        stage("validating")
+        revalidate_result(result, ctx)
+    else:
+        result = generate(args, ctx)
+        result["generation_warnings"] = list(WARNINGS)
+
+    out_dir = args.out_dir or CREATE_DIR
     if args.dry_run:
-        print("\n--- DRY RUN: nothing archived or written to resume_create/ ---\n")
-        print(f"SUMMARY\n{summary}\n")
-        for job in experience:
+        print(f"\n--- DRY RUN: nothing archived or written to {out_dir.name}/ ---\n")
+        print(f"SUMMARY\n{result['summary']}\n")
+        for job in result["experience"]:
             print(job["company"])
             for bullet in job["bullets"]:
-                print(f"  - {bullet}")
-        print(f"\nSKILLS\n{', '.join(skills)}\n")
-        if cover_letter:
-            print("COVER LETTER\n" + "\n\n".join(text for text, _ in cover_letter) + "\n")
+                print(f"  - {bullet['text']}")
+        print(f"\nSKILLS\n{', '.join(result['skills'])}\n")
+        if result.get("cover_letter"):
+            print("COVER LETTER\n" + "\n\n".join(p["text"] for p in result["cover_letter"]) + "\n")
+        base = f"out_resume_{slugify_name(result['contact']['first_name'], result['contact']['last_name'])}"
+        report_path = Path(tempfile.gettempdir()) / f"{base}_{datetime.now():%Y-%m-%d}_report.md"
+        coverage = result.get("coverage") or {}
+        write_report(
+            report_path,
+            result["inputs"],
+            result.get("model", args.model),
+            result.get("effort", args.effort),
+            WARNINGS,
+            (coverage.get("covered", []), coverage.get("missing", [])),
+            result_bullets_by_company(result),
+            result_citations(result),
+            ctx["fact_bank"],
+            result.get("draft", ""),
+            cover_letter=[(p["text"], p["ids"]) for p in result.get("cover_letter") or []] or None,
+        )
     else:
-        archive_existing_outputs()
-        outputs = [(base_name, lambda path: build_docx(data, path))]
-        if cover_letter:
-            paragraphs = [text for text, _ in cover_letter]
-            outputs.append((cl_base_name, lambda path: build_cover_letter_docx(data, paragraphs, path)))
-        for name, build in outputs:
-            docx_path = CREATE_DIR / f"{name}.docx"
-            pdf_path = CREATE_DIR / f"{name}.pdf"
-            build(docx_path)
-            print(f"Wrote {docx_path.relative_to(ROOT)}")
-            if args.no_pdf:
-                continue
-            try:
-                convert_to_pdf(docx_path, pdf_path)
-                print(f"Wrote {pdf_path.relative_to(ROOT)}")
-            except Exception as exc:  # docx2pdf requires MS Word via COM automation
-                warn(f"could not generate {pdf_path.name} ({exc}). The .docx was still created.")
-                continue
-            pages = count_pdf_pages(pdf_path)
-            if name == base_name:
-                page_count = pages
-                print(f"Resume length: {pages} page(s)")
-                if pages > 2:
-                    warn(f"the resume runs {pages} pages; consider cutting the weakest bullets.")
-            elif pages > 1:
-                warn(f"the cover letter runs {pages} pages; it should fit on one.")
-
-        if args.archive_job:
+        report_path = write_outputs(
+            result, out_dir, args.archive_dir, args.template, args.no_pdf, ctx["fact_bank"]
+        )
+        if args.archive_job and not args.render_json:
             ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
-            shutil.move(str(job_path), str(ARCHIVE_DIR / job_path.name))
-            print(f"Archived job posting {job_path.name} -> resume_archive/")
+            shutil.move(str(ctx["job_path"]), str(ARCHIVE_DIR / ctx["job_path"].name))
+            print(f"Archived job posting {ctx['job_path'].name} -> resume_archive/")
 
-    write_report(
-        report_path,
-        {"Profile": profile_path.name, "Prior resume": resume_path.name, "Job posting": job_path.name},
-        args.model,
-        args.effort,
-        WARNINGS,
-        coverage,
-        bullets_by_company,
-        citations,
-        fact_bank,
-        tailored["draft"],
-        cover_letter=cover_letter,
-        page_count=page_count,
-    )
+    result["warnings"] = list(WARNINGS)
+    if args.result_json:
+        save_result(result, args.result_json)
+        print(f"Saved result to {_display(args.result_json)}")
+    stage("done")
     print(f"{len(WARNINGS)} warning(s); see {report_path}")
 
 

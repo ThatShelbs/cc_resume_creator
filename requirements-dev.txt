@@ -1,2 +1,6 @@
 -r requirements.txt
 pytest
+httpx
+pypdfium2
+pillow
+playwright

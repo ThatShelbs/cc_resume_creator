@@ -35,6 +35,11 @@ The intended workflow: read all files from `resume_input/`, generate a tailored 
 - `.claude/skills/resume-tailoring/SKILL.md` — the agent-native home for the tailoring methodology and rules. Single source of truth, used both by the pipeline and by an interactive `/resume-tailoring` invocation. See the "Skills" section below.
 - `resume_input/fact_bank.yaml` — hand-maintained bank of atomic, employer-tagged true facts (id, employer or `general`/`unassigned`, kind, text, metrics, tags). Drafted once by `build_fact_bank.py` (one `claude -p` call; ids and metric checks are assigned deterministically in Python; refuses to overwrite an existing bank without `--force`), then edited by hand. When present, the tailoring call must end every bullet with `[F###, ...]` citations; `validate_citations()` strips them and drops any bullet citing an unknown id, an `unassigned` fact, or another employer's fact, and warns on uncited bullets and on numbers not found in the cited facts. Without a bank the pipeline runs as before, minus provenance checks.
 - `do_not_claim.txt` — hard "never claim" list (claim tier T4 in the skill), one case-insensitive regex per line. Passed to the tailoring call as prohibited, then enforced deterministically: any match in the generated summary, bullets, or skills aborts the run before anything is archived or written. Use phrases rather than bare words (the source legitimately mentions a "full-stack" POC and AWS).
+- `studio/` — Resume Studio's Python backend (FastAPI). See "Resume Studio (browser app)" below.
+- `webapp/frontend/` — Resume Studio's React app (Vite, TypeScript, Tailwind, Radix/shadcn-style components). `npm run build` writes `dist/`, which the backend serves.
+- `launcher.py`, `Launch Resume Studio.bat` — start the app (the .bat first creates `.venv` and installs requirements).
+- `projects/` — one folder per job application created in the app (git-ignored, personal data).
+- `scripts/` — `make_demo_workspace.py` (fictional demo data root), `make_template_previews.py` (template thumbnails, needs Word), `capture_screenshots.py` (README screenshots + phone-width check, needs Playwright), `export_openapi.py` (for `npm run gen:api`), `make_icon.py`, `create_desktop_shortcut.ps1`.
 - `resume_best_practices.md` — evidence-based resume/ATS guidance researched once and cached, so the generator doesn't re-research it (or spend tokens/time on it) on every run. Only claims traceable to a named study or a company's own reported data are included. Referenced by the resume-tailoring skill.
 
 ## Skills
@@ -49,6 +54,9 @@ When adding or changing tailoring behavior, prefer editing this skill (or adding
 pip install -r requirements.txt
 claude /login   # one-time, if not already logged in
 python generate_resume.py            # flags: --job PATH --model M --effort E --no-pdf --dry-run --cover-letter --archive-job
+                                     #   --profile/--resume/--fact-bank/--deny PATH --template {classic,modern,compact}
+                                     #   --out-dir/--archive-dir DIR --result-json PATH --render-json PATH
+python launcher.py                   # Resume Studio in the browser (or double-click "Launch Resume Studio.bat")
 ```
 
 The job posting may be `.docx`, `.pdf` (via `pypdf`), `.txt`, or `.md` (`read_input_text()`); the profile and prior resume must stay `.docx` because their structure is parsed. After PDF export the resume's page count is checked (warning over 2 pages). The contact line's email and any LinkedIn URL from the profile's Applicant info are real hyperlinks.
@@ -67,3 +75,17 @@ After generation, several deterministic Python checks run against the source doc
 
 It then archives whatever is currently in `resume_create/` before writing the new `.docx`/`.pdf`. PDF generation uses `docx2pdf`, which drives MS Word via COM automation and therefore only works on Windows with Word installed — the `.docx` is still produced if that step fails.
 
+
+## Resume Studio (browser app)
+
+A local web front end over the same pipeline. It never tailors anything itself.
+
+- **Inputs stay canonical.** The profile editor writes `resume_input/in_profile.docx` in the exact paragraph layout `parse_applicant_info()`/`parse_profile_skills()` read (`studio/profile_store.py`). An uploaded resume (PDF or Word) is parsed deterministically (`studio/resume_ingest.py`: structured docx first, then a heuristic text parser; a one-shot verbatim Claude extraction only when that finds no employers), every field is checked against the file's text and flagged if not found verbatim, and only after the user confirms is it written as a normalized `in_resume_<First-Last>.docx` that `parse_prior_resume()` reads exactly. The fact bank and never-claim list are edited in place (`studio/facts.py`); every save backs the old file up to `resume_archive/`.
+- **All generation and rendering runs `generate_resume.py` as a subprocess** (`studio/jobs.py`, one job at a time on a worker thread), with `STUDIO_PROGRESS=1` so the script prints `::stage <name>` and `::deny {json}` lines; the server parses those and streams progress to the UI over Server-Sent Events. This keeps the module-level `WARNINGS`, `sys.exit()` error handling, and Word COM out of the server process. A job's `status` only becomes final after its `on_success`/`on_finish` callbacks have installed the results, so a client that sees "succeeded" and refetches always gets the new files.
+- **Pipeline flags used by the app:** `--profile/--resume/--job/--fact-bank/--deny` (explicit inputs), `--out-dir` (a per-job staging folder), `--template {classic,modern,compact}`, `--result-json` (the structured, editable result: contact, summary, education, experience with `{text, ids}` bullets, skills, cover letter, coverage, warnings, draft), and `--render-json` (re-validate a possibly hand-edited result with the same guards, never dropping content except that a never-claim hit still aborts, then write the files; no Claude call). Classic is byte-for-byte the original layout; all templates are defined as `TemplateSpec`s in `TEMPLATES` and stay single-column with nothing in headers/footers.
+- **Project store** (`studio/projects.py`): `projects/<id>/{project.json, job.txt, result.json, outputs/, versions/<ts>/, inputs_snapshot/, run.log}`. A generation installs from staging and keeps what it replaces in `versions/` (copy-first, so a failure never leaves a half-rotated project; PDFs aren't archived, matching `resume_archive/`). Re-renders replace `outputs/` without a version. Deleting moves to `projects/_trash/`.
+- **Windows paths:** `Paths` makes every data path extended-length (`\?\`) so deep folders (e.g. under OneDrive) can't hit MAX_PATH; anything passed to Word or shown to the user goes through `plain_path()`. Use `remove_tree()` (clears OneDrive's read-only attribute, retries) instead of `shutil.rmtree`.
+- **Live checks while editing** (`studio/lint.py`) mirror the pipeline's guards per line (never-claim, numbers vs. sources and cited facts, citations, cross-employer mentions, analogy phrasing) for inline badges only; the render still runs the real guards.
+- **Security:** binds to 127.0.0.1, rejects non-loopback `Host` headers, and requires the per-launch token (injected into `index.html`; `X-Studio-Token` header or `?t=`) on every `/api` call except `/api/health` and the docs.
+- **Tests:** `tests/test_studio.py` (no Claude calls; API tests swap in a fake pipeline script) and `webapp/frontend/src/test/` (Vitest). Run `python -m pytest -q` and `npm run check` in `webapp/frontend`. After changing a Pydantic request model, run `npm run gen:api`.
+- Keep judgment and writing rules in the skills, deterministic concerns in `generate_resume.py`, and app plumbing in `studio/`. UI copy avoids em dashes, like the generated resume text.

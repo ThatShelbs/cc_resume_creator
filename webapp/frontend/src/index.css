@@ -1,0 +1,162 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens. Every color in the UI comes from these, so the day and night
+   themes are two sets of values, not two stylesheets. */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 8%;
+    --canvas: 240 6% 97.3%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 8%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 8%;
+    --primary: 243 75% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 95%;
+    --secondary-foreground: 240 6% 12%;
+    --muted: 240 5% 95.5%;
+    --muted-foreground: 240 4% 40%;
+    --accent: 243 90% 97%;
+    --accent-foreground: 243 60% 38%;
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 62% 34%;
+    --success-foreground: 0 0% 100%;
+    --warning: 35 92% 42%;
+    --warning-foreground: 0 0% 100%;
+    --border: 240 6% 90%;
+    --input: 240 6% 87%;
+    --ring: 243 75% 58%;
+    --radius: 0.625rem;
+    --shadow: 240 20% 12%;
+    --sidebar: 240 6% 97.3%;
+    --sidebar-foreground: 240 6% 20%;
+    --sidebar-accent: 240 6% 92%;
+    --sidebar-border: 240 6% 91%;
+    --paper-canvas: 240 5% 92%;
+  }
+
+  .dark {
+    --background: 240 7% 8%;
+    --foreground: 240 6% 94%;
+    --canvas: 240 8% 5.5%;
+    --card: 240 6% 9.5%;
+    --card-foreground: 240 6% 94%;
+    --popover: 240 6% 10.5%;
+    --popover-foreground: 240 6% 94%;
+    --primary: 239 84% 70%;
+    --primary-foreground: 240 30% 8%;
+    --secondary: 240 5% 15%;
+    --secondary-foreground: 240 6% 92%;
+    --muted: 240 5% 14%;
+    --muted-foreground: 240 5% 66%;
+    --accent: 243 40% 18%;
+    --accent-foreground: 240 90% 88%;
+    --destructive: 0 72% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 55% 50%;
+    --success-foreground: 150 40% 8%;
+    --warning: 38 92% 58%;
+    --warning-foreground: 35 60% 8%;
+    --border: 240 5% 17%;
+    --input: 240 5% 21%;
+    --ring: 239 84% 70%;
+    --shadow: 240 40% 2%;
+    --sidebar: 240 8% 6.5%;
+    --sidebar-foreground: 240 5% 82%;
+    --sidebar-accent: 240 5% 13%;
+    --sidebar-border: 240 5% 13%;
+    --paper-canvas: 240 6% 12%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-canvas text-foreground;
+    font-feature-settings: "cv11", "ss01", "ss03";
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.22);
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+
+  /* Thin, theme-aware scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border)) transparent;
+  }
+}
+
+@layer components {
+  .page-enter {
+    animation: page-enter 220ms cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+
+  .shimmer {
+    @apply relative overflow-hidden bg-muted;
+  }
+  .shimmer::after {
+    content: "";
+    @apply absolute inset-0 -translate-x-full animate-shimmer;
+    background: linear-gradient(90deg, transparent, hsl(var(--background) / 0.55), transparent);
+  }
+
+  .paper-canvas {
+    background-color: hsl(var(--paper-canvas));
+    background-image: radial-gradient(hsl(var(--foreground) / 0.06) 1px, transparent 1px);
+    background-size: 16px 16px;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* react-pdf text + annotation layers */
+.react-pdf__Page__textContent,
+.react-pdf__Page__annotations {
+  user-select: text;
+}
+
+/* Applied for one frame while the theme flips so every surface changes at once. */
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition: none !important;
+}
